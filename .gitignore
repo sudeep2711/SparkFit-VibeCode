@@ -1,0 +1,7 @@
+node_modules/
+*.pkg
+.expo/
+.env
+.env.local
+dist/
+build/
