@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, TextInput, Button, FlatList, KeyboardAvoidingView, Platform, SafeAreaView, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { supabase } from '../services/supabase';
+import { supabase, invokeAgent } from '../services/supabase';
 
 type Message = {
   id: string;
@@ -149,35 +149,12 @@ export const AIOnboardingChatScreen = ({ navigation }: any) => {
   const generatePlan = async (finalProfile: ProfileData) => {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id || 'anonymous-mvp-user';
-      
-      // 1. Save profile
-      await supabase.from('profiles').upsert({
-        id: userId,
-        goal: finalProfile.goal,
-        fitness_level: finalProfile.fitness_level,
-        workout_days_per_week: finalProfile.workout_days_per_week,
-        equipment: finalProfile.equipment,
-        updated_at: new Date().toISOString()
+      await invokeAgent('Generate my workout plan', {
+        screen: 'onboarding',
+        profileData: finalProfile as unknown as Record<string, unknown>,
       });
 
-      // 2. Call generate-workout-plan Edge Function directly
-      const planRes = await supabase.functions.invoke('generate-workout-plan', {
-        body: { profile: finalProfile }
-      });
-
-      if (planRes.error) throw new Error(planRes.error.message);
-
-      const generatedPlan = typeof planRes.data === 'string' ? JSON.parse(planRes.data) : planRes.data;
-
-      // 3. Save to workout_plans
-      await supabase.from('workout_plans').insert({
-        user_id: userId,
-        plan_data: generatedPlan
-      });
-
-      // 4. Navigate to dashboard
+      // Navigate to dashboard — agent-onboarding handles profile save + plan generation internally
       navigation.replace('Main');
     } catch (e: any) {
       console.error(e);

@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, TextInput, Button, FlatList, KeyboardAvoidingView, Platform, SafeAreaView, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { supabase } from '../services/supabase';
+import { invokeAgent } from '../services/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
@@ -16,89 +16,38 @@ export const MidWorkoutChatScreen = () => {
   
   const { exerciseName, currentSet, targetSets, coachTip } = route.params;
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>([{
+    id: Date.now().toString(),
+    role: 'model',
+    text: `Hey! I see you're working on ${exerciseName} (Set ${currentSet} of ${targetSets}). What's up?`
+  }]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [initializing, setInitializing] = useState(true);
-  
-  const [userProfile, setUserProfile] = useState<any>(null);
-
   const flatListRef = useRef<FlatList>(null);
-
-  useEffect(() => {
-    fetchContext();
-  }, []);
-
-  const fetchContext = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-      setUserProfile(profile || {});
-
-      setMessages([{
-        id: Date.now().toString(),
-        role: 'model',
-        text: `Hey! I see you're working on ${exerciseName} (Set ${currentSet} of ${targetSets}). What's up?`
-      }]);
-
-    } catch (e) {
-      console.error(e);
-      setMessages([{
-        id: Date.now().toString(),
-        role: 'model',
-        text: "Hi! I'm your AI Coach. How can I help you mid-workout?"
-      }]);
-    } finally {
-      setInitializing(false);
-    }
-  };
 
   const handleSend = async () => {
     if (!inputText.trim() || loading) return;
 
     const userText = inputText.trim();
     setInputText('');
-
-    const newMessages: Message[] = [
-      ...messages,
-      { id: Date.now().toString(), role: 'user', text: userText }
-    ];
-    
-    setMessages(newMessages);
+    setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', text: userText }]);
     setLoading(true);
 
     try {
-      // Create a hidden context system message to inject into the history so the AI knows what's happening
-      const workoutContextText = `[MID-WORKOUT CONTEXT: The user is currently executing ${exerciseName}. They are on set ${currentSet} of ${targetSets}. Associated coach tip for this exercise is: "${coachTip || 'None'}". Answer their question specifically with this context in mind.]`;
-      
-      const history = newMessages.slice(0, -1).map(m => ({
-        role: m.role,
-        parts: [{ text: m.text }]
-      }));
-      
-      // Prepend context to the user's latest message if it's the first real question to the coach
-      const userMessageWithContext = (messages.length <= 1) ? `${workoutContextText}\nUser says: ${userText}` : userText;
-
-      const res = await supabase.functions.invoke('chat-coach', {
-        body: {
-          profile: userProfile,
-          plan: { current_exercise: exerciseName }, // Mock minimal plan to avoid massive payloads mid-workout
-          history: history,
-          userMessage: userMessageWithContext
-        }
+      const result = await invokeAgent(userText, {
+        screen: 'mid_workout',
+        workoutContext: {
+          exerciseName,
+          currentSet,
+          targetSets,
+          coachTip: coachTip || '',
+        },
       });
-
-      if (res.error) throw new Error(res.error.message || "Failed to reach coach");
-
-      const aiResponseText = typeof res.data === 'string' ? res.data : await res.data.text();
 
       setMessages(prev => [
         ...prev,
-        { id: Date.now().toString(), role: 'model', text: aiResponseText || "Sorry, I didn't catch that." }
+        { id: Date.now().toString(), role: 'model', text: result.response || "Sorry, I didn't catch that." }
       ]);
-
     } catch (e: any) {
       console.error("Chat error:", e);
       setMessages(prev => [
@@ -109,14 +58,6 @@ export const MidWorkoutChatScreen = () => {
       setLoading(false);
     }
   };
-
-  if (initializing) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.safeArea}>

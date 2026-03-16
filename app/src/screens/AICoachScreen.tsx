@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, Button, FlatList, KeyboardAvoidingView, Platform, SafeAreaView, ActivityIndicator } from 'react-native';
-import { supabase } from '../services/supabase';
+import { supabase, invokeAgent } from '../services/supabase';
 
 type Message = {
   id: string;
@@ -13,87 +13,38 @@ export const AICoachScreen = () => {
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
-  
-  // To hold context for the AI
-  const [userProfile, setUserProfile] = useState<any>(null);
-  const [userPlan, setUserPlan] = useState<any>(null);
 
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
-    fetchContext();
+    // Show greeting — agent-companion fetches its own context on each message
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      supabase.from('profiles').select('goal').eq('id', user?.id ?? '').single().then(({ data: profile }) => {
+        setMessages([{
+          id: Date.now().toString(),
+          role: 'model',
+          text: `Hey there! I'm your AI Coach. I see your goal is ${profile?.goal || 'fitness'}. How can I help you with your training today?`
+        }]);
+      }).catch(() => {
+        setMessages([{ id: Date.now().toString(), role: 'model', text: "Hi! I'm your AI Coach. How can I help you today?" }]);
+      }).finally(() => setInitializing(false));
+    });
   }, []);
-
-  const fetchContext = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-      const { data: plan } = await supabase.from('workout_plans').select('plan_data').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1).single();
-
-      setUserProfile(profile || {});
-      setUserPlan(plan?.plan_data || {});
-
-      setMessages([{
-        id: Date.now().toString(),
-        role: 'model',
-        text: `Hey there! I'm your AI Coach. I see your goal is ${profile?.goal || 'fitness'}. How can I help you with your training today?`
-      }]);
-
-    } catch (e) {
-      console.error(e);
-      setMessages([{
-        id: Date.now().toString(),
-        role: 'model',
-        text: "Hi! I'm your AI Coach. How can I help you today?"
-      }]);
-    } finally {
-      setInitializing(false);
-    }
-  };
 
   const handleSend = async () => {
     if (!inputText.trim() || loading) return;
 
     const userText = inputText.trim();
     setInputText('');
-
-    const newMessages: Message[] = [
-      ...messages,
-      { id: Date.now().toString(), role: 'user', text: userText }
-    ];
-    
-    setMessages(newMessages);
+    setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', text: userText }]);
     setLoading(true);
 
     try {
-      // Format history for Gemini (exclude IDs to keep payload clean, just roles and text)
-      const history = newMessages.slice(0, -1).map(m => ({
-        role: m.role,
-        parts: [{ text: m.text }]
-      }));
-
-      const res = await supabase.functions.invoke('chat-coach', {
-        body: {
-          profile: userProfile,
-          plan: userPlan,
-          history: history,
-          userMessage: userText
-        }
-      });
-
-      if (res.error) throw new Error(res.error.message || "Failed to reach coach");
-
-      // res.data contains the string response if backend returns text/plain directly
-      // otherwise fallback or parse
-      const aiResponseText = typeof res.data === 'string' ? res.data : await res.data.text();
-
+      const result = await invokeAgent(userText, { screen: 'ai_coach' });
       setMessages(prev => [
         ...prev,
-        { id: Date.now().toString(), role: 'model', text: aiResponseText || "Sorry, I didn't catch that." }
+        { id: Date.now().toString(), role: 'model', text: result.response || "Sorry, I didn't catch that." }
       ]);
-
     } catch (e: any) {
       console.error("Chat error:", e);
       setMessages(prev => [

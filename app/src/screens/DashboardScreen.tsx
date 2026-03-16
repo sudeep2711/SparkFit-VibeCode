@@ -27,6 +27,8 @@ type Exercise = {
 type DailyPlan = {
   day: string;
   focus: string;
+  is_rest_day?: boolean;
+  estimated_total_time_mins?: number;
   exercises: Exercise[];
 };
 
@@ -36,6 +38,9 @@ export const DashboardScreen = () => {
   const [todayPlan, setTodayPlan] = useState<DailyPlan | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Streak
+  const [currentStreak, setCurrentStreak] = useState(0);
 
   // Track if a workout was completed today
   const [isCompletedToday, setIsCompletedToday] = useState(false);
@@ -81,12 +86,32 @@ export const DashboardScreen = () => {
         throw planError;
       }
 
-      // Automatically pick Day 1 for MVP representation, or ideally calculate based on date difference
-      if (planData && planData.plan_data && planData.plan_data.week_plan && planData.plan_data.week_plan.length > 0) {
+      // Normalise plan_data — handle both flat array and legacy { week_plan: [...] } format
+      const rawPlan = planData?.plan_data;
+      const weekPlan: DailyPlan[] = Array.isArray(rawPlan)
+        ? rawPlan
+        : Array.isArray(rawPlan?.week_plan)
+          ? rawPlan.week_plan
+          : [];
+
+      // Fetch streak (non-blocking)
+      supabase
+        .from('streaks')
+        .select('current_streak')
+        .eq('user_id', user.id)
+        .maybeSingle()
+        .then(({ data: streakData }) => {
+          setCurrentStreak(streakData?.current_streak ?? 0);
+        });
+
+      if (planData && weekPlan.length > 0) {
         setPlanId(planData.id);
 
-        // Find today's plan based on created_at offset (simplified for MVP: just use Day 1)
-        setTodayPlan(planData.plan_data.week_plan[0]);
+        // Find today's plan by day name (handles "Monday") or fall back to first active day
+        const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+        const byName = weekPlan.find((d: DailyPlan) => d.day.toLowerCase() === todayName.toLowerCase());
+        const today = byName ?? weekPlan.find((d: DailyPlan) => !d.is_rest_day) ?? weekPlan[0];
+        setTodayPlan(today);
 
         // Check for today's logs
         await checkTodayLogs(user.id, planData.id);
@@ -176,7 +201,15 @@ export const DashboardScreen = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        <Text style={styles.title}>Today's Workout</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Today's Workout</Text>
+          {currentStreak > 0 && (
+            <View style={styles.streakBadge}>
+              <Text style={styles.streakEmoji}>🔥</Text>
+              <Text style={styles.streakText}>{currentStreak}</Text>
+            </View>
+          )}
+        </View>
 
         {error ? (
           <Text style={styles.errorText}>Error: {error}</Text>
@@ -333,10 +366,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#fff',
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 20,
+  },
+  streakBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF4E5',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#FFD59E',
+  },
+  streakEmoji: {
+    fontSize: 18,
+    marginRight: 4,
+  },
+  streakText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#E65100',
   },
   subTitleRow: {
     flexDirection: 'row',

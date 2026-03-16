@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, FlatList, KeyboardAvoidingView, Platform, SafeAreaView, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { supabase } from '../services/supabase';
+import { invokeAgent } from '../services/supabase';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -90,60 +90,16 @@ export const ChangeWorkoutChatScreen = () => {
     const triggerWorkoutGeneration = async (finalAnswers: Record<string, string>) => {
         setLoading(true);
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error("Not authenticated");
-
-            const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-
-            // 1. Call custom edge function to generate 1 daily plan matching answers
-            const payload = {
-                profile: profile,
-                chatPreferences: finalAnswers
-            };
-            console.log("SENDING PAYLOAD:", JSON.stringify(payload, null, 2));
-
-            const res = await supabase.functions.invoke('generate-daily-workout', {
-                body: payload
+            const result = await invokeAgent('Change my workout for today', {
+                screen: 'change_workout',
+                planId,
+                chatPreferences: finalAnswers as unknown as Record<string, unknown>,
             });
-
-            console.log("FUNCTION RAW RESPONSE:", res);
-
-            if (res.error) {
-                console.error("Function Error Payload:", res.error);
-                throw new Error(res.error.message || "Failed to generate workout");
-            }
-
-            const dailyPlanResponse = res.data; // Raw object back from edge function
-            console.log("OBTAINED DAILY PLAN:", JSON.stringify(dailyPlanResponse, null, 2));
-
-            // 2. Load the current week plan to swap out Day 1
-            const { data: currentPlanRow, error: fetchError } = await supabase
-                .from('workout_plans')
-                .select('plan_data')
-                .eq('id', planId)
-                .single();
-
-            if (fetchError) throw fetchError;
-
-            const fullPlan = currentPlanRow.plan_data;
-            if (fullPlan && fullPlan.week_plan && fullPlan.week_plan.length > 0) {
-                // Swap out the first day logic
-                fullPlan.week_plan[0] = dailyPlanResponse;
-
-                // 3. Update DB
-                const { error: updateError } = await supabase
-                    .from('workout_plans')
-                    .update({ plan_data: fullPlan })
-                    .eq('id', planId);
-
-                if (updateError) throw updateError;
-            }
 
             setMessages(prev => [
                 ...prev,
-                { id: Date.now().toString(), role: 'model', text: "All done! I've updated your workout for today. You can close this chat and start when ready!" }
+                { id: Date.now().toString(), role: 'model', text: result.response || "All done! I've updated your workout for today. You can close this chat and start when ready!" }
             ]);
-
         } catch (error: any) {
             console.error(error);
             setMessages(prev => [

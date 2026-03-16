@@ -4,9 +4,49 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
-import { supabase } from '../services/supabase';
+import { supabase, invokeAgent } from '../services/supabase';
 
 type SummaryNavigationProp = NativeStackNavigationProp<RootStackParamList, 'WorkoutSummary'>;
+
+async function updateStreak(userId: string, today: string, isPartial: boolean) {
+  // Only full completions count toward the streak
+  if (isPartial) return;
+  try {
+    const { data: existing } = await supabase
+      .from('streaks')
+      .select('current_streak, longest_streak, last_workout')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    const todayDate = new Date(today);
+    const lastDate = existing?.last_workout ? new Date(existing.last_workout) : null;
+    const dayDiff = lastDate
+      ? Math.round((todayDate.getTime() - lastDate.getTime()) / 86400000)
+      : null;
+
+    let newStreak = 1;
+    if (dayDiff === 1) {
+      // Consecutive day — extend streak
+      newStreak = (existing?.current_streak ?? 0) + 1;
+    } else if (dayDiff === 0) {
+      // Same day — keep current
+      newStreak = existing?.current_streak ?? 1;
+    }
+    // dayDiff > 1 or null → reset to 1
+
+    const longestStreak = Math.max(newStreak, existing?.longest_streak ?? 0);
+
+    await supabase.from('streaks').upsert({
+      user_id: userId,
+      current_streak: newStreak,
+      longest_streak: longestStreak,
+      last_workout: today,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' });
+  } catch (e) {
+    console.error('updateStreak error:', e);
+  }
+}
 
 export const WorkoutSummaryScreen = () => {
   const navigation = useNavigation<SummaryNavigationProp>();
@@ -69,6 +109,14 @@ export const WorkoutSummaryScreen = () => {
           });
         if (error) throw error;
       }
+
+      // Update streak
+      await updateStreak(user.id, today, stats.isPartial);
+
+      // Store workout as a memory (fire-and-forget) so companion can reference it
+      const exerciseNames = (stats.sessionLogs ?? []).map((l: any) => l.name).join(', ');
+      const memoryText = `Workout on ${today}: ${stats.isPartial ? 'partial' : 'completed'} — ${stats.totalExercises} exercises (${exerciseNames}), ${stats.totalSets} sets, ${stats.durationMins} mins. Felt: ${feedback}.${workoutNotes ? ` Notes: ${workoutNotes}` : ''}`;
+      invokeAgent(memoryText, { screen: 'workout_summary', action: 'store_memory' }).catch(() => {});
 
       navigation.navigate('Main');
 
