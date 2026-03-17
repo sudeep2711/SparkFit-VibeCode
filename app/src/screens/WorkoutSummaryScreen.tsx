@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
-import { supabase, invokeAgent } from '../services/supabase';
+import { supabase } from '../services/supabase';
 
 type SummaryNavigationProp = NativeStackNavigationProp<RootStackParamList, 'WorkoutSummary'>;
 
@@ -116,7 +116,15 @@ export const WorkoutSummaryScreen = () => {
       // Store workout as a memory (fire-and-forget) so companion can reference it
       const exerciseNames = (stats.sessionLogs ?? []).map((l: any) => l.name).join(', ');
       const memoryText = `Workout on ${today}: ${stats.isPartial ? 'partial' : 'completed'} — ${stats.totalExercises} exercises (${exerciseNames}), ${stats.totalSets} sets, ${stats.durationMins} mins. Felt: ${feedback}.${workoutNotes ? ` Notes: ${workoutNotes}` : ''}`;
-      invokeAgent(memoryText, { screen: 'workout_summary', action: 'store_memory' }).catch(() => {});
+      supabase.functions.invoke('util-memory', {
+        body: {
+          action: 'embed_and_store',
+          userId: user.id,
+          content: memoryText,
+          type: 'workout_log',
+          metadata: { date: today, planId, isPartial: stats.isPartial },
+        },
+      }).catch(() => {});
 
       navigation.navigate('Main');
 

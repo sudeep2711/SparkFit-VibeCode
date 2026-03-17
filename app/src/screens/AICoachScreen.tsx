@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, Button, FlatList, KeyboardAvoidingView, Platform, SafeAreaView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Button, FlatList, KeyboardAvoidingView, Platform, SafeAreaView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { supabase, invokeAgent } from '../services/supabase';
 
 type Message = {
@@ -8,11 +8,18 @@ type Message = {
   text: string;
 };
 
+type PendingProposal = {
+  proposed_plan: unknown[];
+  change_summary: string;
+  plan_id: string;
+} | null;
+
 export const AICoachScreen = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [pendingProposal, setPendingProposal] = useState<PendingProposal>(null);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -41,6 +48,11 @@ export const AICoachScreen = () => {
 
     try {
       const result = await invokeAgent(userText, { screen: 'ai_coach' });
+      // Check for plan proposal requiring user confirmation before DB write
+      const proposal = result.actions?.find(a => a.type === 'propose_plan_change');
+      if (proposal) {
+        setPendingProposal(proposal.payload as PendingProposal);
+      }
       setMessages(prev => [
         ...prev,
         { id: Date.now().toString(), role: 'model', text: result.response || "Sorry, I didn't catch that." }
@@ -54,6 +66,38 @@ export const AICoachScreen = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleConfirmPlanChange = async () => {
+    if (!pendingProposal) return;
+    setLoading(true);
+    try {
+      const result = await invokeAgent('confirm', {
+        screen: 'ai_coach',
+        action: 'confirm_plan_change',
+        pendingPlan: pendingProposal.proposed_plan,
+      });
+      setMessages(prev => [
+        ...prev,
+        { id: Date.now().toString(), role: 'model', text: result.response }
+      ]);
+    } catch {
+      setMessages(prev => [
+        ...prev,
+        { id: Date.now().toString(), role: 'model', text: "Couldn't save the plan. Try again." }
+      ]);
+    } finally {
+      setPendingProposal(null);
+      setLoading(false);
+    }
+  };
+
+  const handleCancelPlanChange = () => {
+    setPendingProposal(null);
+    setMessages(prev => [
+      ...prev,
+      { id: Date.now().toString(), role: 'model', text: "No problem — your plan stays as is." }
+    ]);
   };
 
   if (initializing) {
@@ -93,6 +137,17 @@ export const AICoachScreen = () => {
             </View>
           )}
         />
+
+        {pendingProposal && !loading && (
+          <View style={styles.proposalBar}>
+            <TouchableOpacity style={styles.confirmButton} onPress={handleConfirmPlanChange}>
+              <Text style={styles.confirmButtonText}>Confirm Changes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cancelButton} onPress={handleCancelPlanChange}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={styles.inputArea}>
           <TextInput
@@ -197,5 +252,38 @@ const styles = StyleSheet.create({
   },
   sendLoading: {
     paddingHorizontal: 15,
-  }
+  },
+  proposalBar: {
+    flexDirection: 'row',
+    padding: 10,
+    paddingHorizontal: 15,
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    backgroundColor: '#F8FFF8',
+  },
+  confirmButton: {
+    flex: 1,
+    backgroundColor: '#34C759',
+    paddingVertical: 12,
+    borderRadius: 20,
+    alignItems: 'center',
+  },
+  confirmButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: '#F2F2F7',
+    paddingVertical: 12,
+    borderRadius: 20,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: '#333',
+    fontWeight: '600',
+    fontSize: 15,
+  },
 });

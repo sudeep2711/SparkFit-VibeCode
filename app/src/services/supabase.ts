@@ -13,6 +13,7 @@ export interface AgentContext {
   exerciseName?: string;
   planId?: string;
   sessionId?: string;
+  pendingPlan?: unknown[];   // proposed WeekPlan carried through confirm round-trip
   [key: string]: unknown;
 }
 

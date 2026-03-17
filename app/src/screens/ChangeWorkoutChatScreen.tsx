@@ -34,6 +34,13 @@ export const ChangeWorkoutChatScreen = () => {
     const [questionIndex, setQuestionIndex] = useState(0);
     const [answers, setAnswers] = useState<Record<string, string>>({});
 
+    type PendingProposal = {
+        proposed_plan: unknown[];
+        change_summary: string;
+        plan_id: string;
+    } | null;
+    const [pendingProposal, setPendingProposal] = useState<PendingProposal>(null);
+
     const flatListRef = useRef<FlatList>(null);
 
     useEffect(() => {
@@ -96,6 +103,11 @@ export const ChangeWorkoutChatScreen = () => {
                 chatPreferences: finalAnswers as unknown as Record<string, unknown>,
             });
 
+            const proposal = result.actions?.find(a => a.type === 'propose_plan_change');
+            if (proposal) {
+                setPendingProposal(proposal.payload as PendingProposal);
+            }
+
             setMessages(prev => [
                 ...prev,
                 { id: Date.now().toString(), role: 'model', text: result.response || "All done! I've updated your workout for today. You can close this chat and start when ready!" }
@@ -109,6 +121,38 @@ export const ChangeWorkoutChatScreen = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleConfirmPlanChange = async () => {
+        if (!pendingProposal) return;
+        setLoading(true);
+        try {
+            const result = await invokeAgent('confirm', {
+                screen: 'change_workout',
+                action: 'confirm_plan_change',
+                pendingPlan: pendingProposal.proposed_plan,
+            });
+            setMessages(prev => [
+                ...prev,
+                { id: Date.now().toString(), role: 'model', text: result.response }
+            ]);
+        } catch {
+            setMessages(prev => [
+                ...prev,
+                { id: Date.now().toString(), role: 'model', text: "Couldn't save the plan. Try again." }
+            ]);
+        } finally {
+            setPendingProposal(null);
+            setLoading(false);
+        }
+    };
+
+    const handleCancelPlanChange = () => {
+        setPendingProposal(null);
+        setMessages(prev => [
+            ...prev,
+            { id: Date.now().toString(), role: 'model', text: "Got it — no changes made." }
+        ]);
     };
 
     const currentQuestion = questionIndex < QUESTIONS.length ? QUESTIONS[questionIndex] : null;
@@ -183,9 +227,20 @@ export const ChangeWorkoutChatScreen = () => {
 
                 {!loading && !currentQuestion && (
                     <View style={styles.inputArea}>
-                        <TouchableOpacity style={styles.doneButton} onPress={() => navigation.goBack()}>
-                            <Text style={styles.doneButtonText}>Return to Dashboard</Text>
-                        </TouchableOpacity>
+                        {pendingProposal ? (
+                            <View style={styles.proposalRow}>
+                                <TouchableOpacity style={styles.confirmButton} onPress={handleConfirmPlanChange}>
+                                    <Text style={styles.confirmButtonText}>Confirm Changes</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={styles.cancelButton} onPress={handleCancelPlanChange}>
+                                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                                </TouchableOpacity>
+                            </View>
+                        ) : (
+                            <TouchableOpacity style={styles.doneButton} onPress={() => navigation.goBack()}>
+                                <Text style={styles.doneButtonText}>Return to Dashboard</Text>
+                            </TouchableOpacity>
+                        )}
                     </View>
                 )}
             </KeyboardAvoidingView>
@@ -285,5 +340,25 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#666',
         fontWeight: '500'
-    }
+    },
+    proposalRow: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    confirmButton: {
+        flex: 1,
+        backgroundColor: '#34C759',
+        paddingVertical: 14,
+        borderRadius: 24,
+        alignItems: 'center',
+    },
+    confirmButtonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    cancelButton: {
+        flex: 1,
+        backgroundColor: '#F2F2F7',
+        paddingVertical: 14,
+        borderRadius: 24,
+        alignItems: 'center',
+    },
+    cancelButtonText: { color: '#333', fontWeight: '600', fontSize: 16 },
 });

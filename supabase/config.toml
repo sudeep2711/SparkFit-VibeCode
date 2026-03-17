@@ -30,6 +30,10 @@ enabled = true
 verify_jwt = false
 
 [functions.agent-memory]
+enabled = false
+verify_jwt = false
+
+[functions.util-memory]
 enabled = true
 verify_jwt = false
 
@@ -46,5 +50,5 @@ enabled = true
 verify_jwt = false
 
 [functions.agent-companion]
-enabled = true
+enabled = false
 verify_jwt = false

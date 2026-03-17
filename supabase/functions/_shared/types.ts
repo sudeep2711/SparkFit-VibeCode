@@ -11,6 +11,7 @@ export interface AgentContext {
   exerciseName?: string;    // for mid-workout context
   planId?: string;          // active plan id
   sessionId?: string;       // chat session id for grouping history
+  pendingPlan?: WeekPlan;   // carries proposed plan through confirmation round-trip
   [key: string]: unknown;
 }
 
@@ -32,7 +33,8 @@ export type ActionType =
   | 'trim_workout'
   | 'save_profile'
   | 'show_chart'
-  | 'update_streak';
+  | 'update_streak'
+  | 'propose_plan_change';
 
 export interface Memory {
   id: string;

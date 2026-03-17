@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SparkFit Agent Tester</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f0f0f;
+      color: #f0f0f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      background: #1a1a1a;
+      border-bottom: 1px solid #2a2a2a;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-shrink: 0;
+    }
+
+    header h1 { font-size: 16px; font-weight: 700; color: #ff6b35; white-space: nowrap; }
+
+    .user-id-row { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+    .user-id-row label { font-size: 12px; color: #666; white-space: nowrap; }
+
+    #user-select {
+      flex: 1;
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
+      border-radius: 7px;
+      padding: 7px 30px 7px 10px;
+      color: #f0f0f0;
+      font-size: 13px;
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23888' d='M5 6L0 0h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      min-width: 0;
+    }
+    #user-select:focus { outline: none; border-color: #ff6b35; }
+    #user-select option { background: #1a1a1a; }
+
+    #user-id {
+      width: 180px;
+      flex-shrink: 0;
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
+      border-radius: 7px;
+      padding: 7px 10px;
+      color: #f0f0f0;
+      font-size: 12px;
+      font-family: monospace;
+    }
+    #user-id:focus { outline: none; border-color: #ff6b35; }
+
+    #load-btn {
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
+      border-radius: 7px;
+      padding: 7px 14px;
+      color: #ccc;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    #load-btn:hover { border-color: #ff6b35; color: #ff6b35; }
+
+    /* ── Main layout: 45/55 split ── */
+    .main { flex: 1; display: flex; overflow: hidden; }
+
+    /* ── Chat panel (left) ── */
+    .chat-panel {
+      width: 45%;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #2a2a2a;
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .message { display: flex; flex-direction: column; max-width: 82%; }
+    .message.user { align-self: flex-end; align-items: flex-end; }
+    .message.ai   { align-self: flex-start; align-items: flex-start; }
+
+    .bubble {
+      padding: 10px 14px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .message.user .bubble { background: #ff6b35; color: #fff; border-bottom-right-radius: 3px; }
+    .message.ai   .bubble { background: #1e1e1e; border: 1px solid #2a2a2a; border-bottom-left-radius: 3px; }
+
+    .meta { font-size: 10px; color: #555; margin-top: 3px; padding: 0 3px; }
+    .meta .agent-tag {
+      display: inline-block;
+      background: #2a2a2a; border: 1px solid #3a3a3a;
+      border-radius: 3px; padding: 1px 5px;
+      font-family: monospace; color: #ff6b35; font-size: 10px; margin-left: 3px;
+    }
+
+    .actions-log { align-self: flex-start; margin-top: -4px; display: flex; flex-direction: column; gap: 3px; max-width: 82%; }
+    .action-item {
+      display: flex; align-items: center; gap: 7px;
+      background: #0d1f0d; border: 1px solid #1a3a1a;
+      border-radius: 7px; padding: 5px 10px;
+      font-size: 11px; color: #6fcf6f;
+    }
+    .action-item .action-icon { font-size: 13px; flex-shrink: 0; }
+    .action-item .action-label { font-weight: 600; color: #8fef8f; }
+    .action-item .action-detail { color: #5a9f5a; font-family: monospace; font-size: 10px; word-break: break-all; }
+
+    .typing {
+      align-self: flex-start;
+      background: #1e1e1e; border: 1px solid #2a2a2a;
+      border-radius: 14px; border-bottom-left-radius: 3px;
+      padding: 10px 16px; color: #555; font-size: 13px;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+    .error-bubble {
+      background: #2a1010; border: 1px solid #5a2020; color: #ff8080;
+      padding: 10px 14px; border-radius: 10px; font-size: 12px;
+      font-family: monospace; align-self: flex-start; max-width: 90%; white-space: pre-wrap;
+    }
+
+    .empty-state {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 10px; color: #444;
+    }
+    .empty-state .icon { font-size: 40px; }
+    .empty-state p { font-size: 14px; }
+
+    .chat-footer {
+      background: #1a1a1a; border-top: 1px solid #2a2a2a;
+      padding: 12px 16px; display: flex; gap: 10px; flex-shrink: 0;
+    }
+    .chat-footer textarea {
+      flex: 1; background: #2a2a2a; border: 1px solid #3a3a3a;
+      border-radius: 10px; padding: 10px 14px; color: #f0f0f0;
+      font-size: 14px; font-family: inherit; resize: none;
+      height: 48px; max-height: 120px; overflow-y: auto;
+    }
+    .chat-footer textarea:focus { outline: none; border-color: #ff6b35; }
+    #send-btn {
+      background: #ff6b35; border: none; border-radius: 10px;
+      padding: 0 20px; color: #fff; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: background 0.15s;
+    }
+    #send-btn:hover { background: #e55a25; }
+    #send-btn:disabled { background: #444; cursor: not-allowed; }
+
+    /* ── Data panel (right) — tabbed ── */
+    .data-panel {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      background: #111;
+      overflow: hidden;
+    }
+
+    /* Tab bar */
+    .tab-bar {
+      display: flex;
+      align-items: stretch;
+      border-bottom: 1px solid #2a2a2a;
+      background: #161616;
+      flex-shrink: 0;
+    }
+
+    .tab-btn {
+      flex: 1;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 10px 6px;
+      color: #555;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      transition: color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+    .tab-btn:hover { color: #aaa; }
+    .tab-btn.active { color: #ff6b35; border-bottom-color: #ff6b35; }
+
+    .tab-actions {
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    #refresh-btn {
+      background: none; border: 1px solid #2a2a2a; border-radius: 5px;
+      padding: 4px 9px; color: #555; font-size: 11px; cursor: pointer;
+    }
+    #refresh-btn:hover { border-color: #ff6b35; color: #ff6b35; }
+
+    /* Tab panes */
+    .tab-pane {
+      display: none;
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      min-height: 0;
+    }
+    .tab-pane.active { display: block; }
+    .tab-pane.active .card { margin-bottom: 12px; }
+    .tab-pane.active .card:last-child { margin-bottom: 0; }
+    .tab-pane.active .panel-empty { margin-top: 40px; }
+
+    /* ── Shared card styles ── */
+    .card {
+      background: #1a1a1a; border: 1px solid #252525;
+      border-radius: 10px; overflow: hidden;
+    }
+    .card-title {
+      font-size: 11px; font-weight: 700; color: #666;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 10px 14px 8px; border-bottom: 1px solid #222;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .card-title .badge {
+      background: #2a2a2a; border-radius: 10px;
+      padding: 2px 8px; font-size: 11px; color: #888;
+      text-transform: none; letter-spacing: 0;
+    }
+    .card-body { padding: 10px 14px 12px; }
+
+    /* KV rows */
+    .kv { display: flex; justify-content: space-between; align-items: flex-start; padding: 5px 0; font-size: 13px; gap: 16px; border-bottom: 1px solid #1e1e1e; }
+    .kv:last-child { border-bottom: none; }
+    .kv .k { color: #666; flex-shrink: 0; }
+    .kv .v { color: #ddd; font-weight: 500; text-align: right; word-break: break-word; overflow-wrap: anywhere; }
+
+    /* Stat pills */
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px 14px 12px; }
+    .stat-box { background: #222; border-radius: 8px; padding: 10px; text-align: center; }
+    .stat-box .num { font-size: 22px; font-weight: 700; color: #ff6b35; }
+    .stat-box .lbl { font-size: 11px; color: #666; margin-top: 2px; }
+
+    /* Plan days — accordion */
+    .day-item { border-bottom: 1px solid #1e1e1e; }
+    .day-item:last-child { border-bottom: none; }
+
+    .day-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 0; cursor: pointer; user-select: none;
+    }
+    .day-header:hover .day-focus { color: #fff; }
+
+    .day-num {
+      width: 46px; height: 28px; border-radius: 6px; flex-shrink: 0;
+      background: #252525; display: flex; align-items: center; justify-content: center;
+      font-family: monospace; font-size: 11px; font-weight: 700; color: #ff6b35;
+    }
+    .day-num.rest { color: #444; }
+    .day-focus { flex: 1; color: #ccc; font-size: 13px; }
+    .day-excount {
+      background: #252525; border-radius: 20px;
+      padding: 2px 8px; font-size: 11px; color: #888; white-space: nowrap;
+    }
+    .day-chevron { color: #444; font-size: 11px; flex-shrink: 0; transition: transform 0.2s; }
+    .day-item.open .day-chevron { transform: rotate(180deg); }
+
+    /* Exercise list inside accordion */
+    .day-exercises {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      padding: 0 0 10px 56px;
+    }
+    .day-item.open .day-exercises { display: flex; }
+
+    .ex-row {
+      background: #1e1e1e; border: 1px solid #252525;
+      border-radius: 7px; padding: 8px 10px;
+    }
+    .ex-name { font-size: 13px; font-weight: 600; color: #eee; margin-bottom: 2px; }
+    .ex-meta { font-size: 11px; color: #666; display: flex; gap: 10px; flex-wrap: wrap; }
+    .ex-meta span { background: #252525; border-radius: 4px; padding: 1px 6px; }
+    .ex-tip { font-size: 11px; color: #555; margin-top: 4px; font-style: italic; line-height: 1.4; }
+    .rest-label { font-size: 12px; color: #444; padding: 4px 0 6px; font-style: italic; }
+
+    /* Chat history */
+    .chat-msg {
+      background: #1a1a1a; border: 1px solid #222;
+      border-radius: 8px; padding: 10px 12px; font-size: 13px;
+    }
+    .chat-msg-header {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+    }
+    .role-pill {
+      font-size: 10px; font-weight: 700; padding: 2px 7px;
+      border-radius: 10px; text-transform: uppercase;
+    }
+    .role-pill.user  { background: #ff6b3525; color: #ff6b35; }
+    .role-pill.model { background: #1e4a1e; color: #6fcf6f; }
+    .msg-agent { font-size: 11px; color: #444; font-family: monospace; }
+    .msg-time  { font-size: 11px; color: #333; margin-left: auto; }
+    .msg-body  { color: #bbb; line-height: 1.5; word-break: break-word; white-space: pre-wrap; }
+
+    /* Log rows */
+    .log-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 0; border-bottom: 1px solid #1e1e1e; font-size: 13px;
+    }
+    .log-row:last-child { border-bottom: none; }
+    .log-date { color: #ccc; }
+    .log-id { font-family: monospace; font-size: 11px; color: #555; }
+
+    .panel-empty { color: #444; font-size: 13px; text-align: center; padding: 40px 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>SparkFit Tester</h1>
+  <div class="user-id-row">
+    <label>User:</label>
+    <select id="user-select"><option value="">— loading… —</option></select>
+    <input type="text" id="user-id" placeholder="or paste UUID" />
+    <button id="load-btn">Load</button>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- ── Chat ── -->
+  <div class="chat-panel">
+    <div id="messages">
+      <div class="empty-state">
+        <div class="icon">🤖</div>
+        <p>Select a user, then start chatting.</p>
+        <p style="font-size:12px;color:#333;">Agent tag shown under each reply.</p>
+      </div>
+    </div>
+    <div class="chat-footer">
+      <textarea id="input" placeholder="Message… (Enter to send, Shift+Enter for newline)"></textarea>
+      <button id="send-btn">Send</button>
+    </div>
+  </div>
+
+  <!-- ── Data panel ── -->
+  <div class="data-panel">
+
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="profile">Profile</button>
+      <button class="tab-btn" data-tab="plan">Plan</button>
+      <button class="tab-btn" data-tab="chat">Chat</button>
+      <button class="tab-btn" data-tab="logs">Logs</button>
+      <div class="tab-actions">
+        <button id="refresh-btn">↻</button>
+      </div>
+    </div>
+
+    <!-- Profile tab -->
+    <div class="tab-pane active" id="tab-profile">
+      <div class="panel-empty">Select a user and click Load.</div>
+    </div>
+
+    <!-- Plan tab -->
+    <div class="tab-pane" id="tab-plan">
+      <div class="panel-empty">No data loaded.</div>
+    </div>
+
+    <!-- Chat history tab -->
+    <div class="tab-pane" id="tab-chat">
+      <div class="panel-empty">No data loaded.</div>
+    </div>
+
+    <!-- Logs tab -->
+    <div class="tab-pane" id="tab-logs">
+      <div class="panel-empty">No data loaded.</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const SUPABASE_URL = 'https://pojshuemshcdllrqkhog.supabase.co';
+  const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvanNodWVtc2hjZGxscnFraG9nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5MjU5MDAsImV4cCI6MjA4ODUwMTkwMH0.4mZa4BK0ff2LbpTovuDZy2stW4GwNmrdpAbdii6Ghcs';
+
+  const messagesEl = document.getElementById('messages');
+  const inputEl    = document.getElementById('input');
+  const sendBtn    = document.getElementById('send-btn');
+  const userIdEl   = document.getElementById('user-id');
+  const userSelect = document.getElementById('user-select');
+  const loadBtn    = document.getElementById('load-btn');
+  const refreshBtn = document.getElementById('refresh-btn');
+
+  // ── Plan accordion ───────────────────────────────────────────────────────
+  function toggleDay(idx) {
+    const item = document.getElementById('day-item-' + idx);
+    if (item) item.classList.toggle('open');
+  }
+
+  // ── Tabs ──────────────────────────────────────────────────────────────────
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach((p) => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // ── User dropdown ─────────────────────────────────────────────────────────
+  async function populateUserDropdown() {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/tester-list-users`, {
+        headers: { 'Authorization': `Bearer ${ANON_KEY}` },
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Failed');
+      userSelect.innerHTML = '<option value="">— select a user —</option>';
+      (data.users || []).forEach((u) => {
+        const opt = document.createElement('option');
+        opt.value = u.id;
+        opt.textContent = u.label;
+        userSelect.appendChild(opt);
+      });
+    } catch (err) {
+      userSelect.innerHTML = `<option value="">⚠ ${err.message}</option>`;
+    }
+  }
+
+  userSelect.addEventListener('change', () => {
+    if (userSelect.value) { userIdEl.value = userSelect.value; loadUserData(); }
+  });
+  userIdEl.addEventListener('input', () => { userSelect.value = ''; });
+  userIdEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadUserData(); });
+  populateUserDropdown();
+
+  // ── Data panel rendering ──────────────────────────────────────────────────
+  function esc(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function kv(k, v) {
+    return `<div class="kv"><span class="k">${k}</span><span class="v">${esc(v ?? '—')}</span></div>`;
+  }
+
+  function fmtTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function renderProfile(d) {
+    const p = d.profile || {};
+    const logs = d.recent_logs || [];
+    const chat = d.recent_chat || [];
+    const memCount = d.memory_count ?? 0;
+
+    const equip = Array.isArray(p.equipment_list)
+      ? p.equipment_list.join(', ')
+      : (p.equipment || '—');
+
+    return `
+      <div class="card">
+        <div class="card-title">Stats</div>
+        <div class="stats-grid">
+          <div class="stat-box"><div class="num">${memCount}</div><div class="lbl">Memories</div></div>
+          <div class="stat-box"><div class="num">${logs.length}</div><div class="lbl">Log entries</div></div>
+          <div class="stat-box"><div class="num">${chat.length}</div><div class="lbl">Messages</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Profile</div>
+        <div class="card-body">
+          ${kv('Email', p.email)}
+          ${kv('Goal', p.goal)}
+          ${kv('Fitness level', p.fitness_level)}
+          ${kv('Days / week', p.workout_days_per_week)}
+          ${kv('Equipment', equip)}
+          ${kv('Onboarding', p.onboarding_complete ? '✅ Complete' : '⏳ Pending')}
+        </div>
+      </div>`;
+  }
+
+  function renderPlan(d) {
+    const plan = d.plan;
+    if (!plan) return `<div class="panel-empty">No workout plan found for this user.</div>`;
+
+    const days = plan.days || [];
+    const dayItems = days.map((day, idx) => {
+      const isRest = day.is_rest_day;
+      const shortDay = (day.day || '').slice(0, 3).toUpperCase();
+      const exercises = day.exercises || [];
+
+      let exercisesHtml = '';
+      if (isRest) {
+        exercisesHtml = `<div class="rest-label">Rest & recovery day</div>`;
+      } else {
+        exercisesHtml = exercises.map((ex) => `
+          <div class="ex-row">
+            <div class="ex-name">${esc(ex.name)}</div>
+            <div class="ex-meta">
+              <span>${ex.sets} sets × ${esc(ex.reps)}</span>
+              <span>${ex.type}</span>
+              ${ex.estimated_time_secs ? `<span>~${Math.round(ex.estimated_time_secs / 60)} min</span>` : ''}
+            </div>
+            ${ex.coach_tip ? `<div class="ex-tip">${esc(ex.coach_tip)}</div>` : ''}
+          </div>`).join('');
+      }
+
+      return `
+        <div class="day-item" id="day-item-${idx}">
+          <div class="day-header" onclick="toggleDay(${idx})">
+            <div class="day-num${isRest ? ' rest' : ''}">${shortDay}</div>
+            <div class="day-focus">${esc(day.focus || (isRest ? 'Rest' : '—'))}</div>
+            ${!isRest ? `<div class="day-excount">${exercises.length} exercises</div>` : ''}
+            <div class="day-chevron">▼</div>
+          </div>
+          <div class="day-exercises">${exercisesHtml}</div>
+        </div>`;
+    }).join('');
+
+    const totalMins = days.reduce((s, d) => s + (d.estimated_total_time_mins || 0), 0);
+
+    return `
+      <div class="card">
+        <div class="card-title">
+          7-Day Plan
+          <span class="badge">${esc(plan.status || 'active')}</span>
+        </div>
+        <div class="card-body">${dayItems}</div>
+      </div>`;
+  }
+
+  function renderChat(d) {
+    const chat = d.recent_chat || [];
+    if (chat.length === 0) return `<div class="panel-empty">No chat history found.</div>`;
+
+    return chat.map((msg) => `
+      <div class="chat-msg">
+        <div class="chat-msg-header">
+          <span class="role-pill ${msg.role}">${msg.role}</span>
+          ${msg.agent ? `<span class="msg-agent">${esc(msg.agent)}</span>` : ''}
+          <span class="msg-time">${fmtTime(msg.created_at)}</span>
+        </div>
+        <div class="msg-body">${esc(msg.content || '')}</div>
+      </div>`).join('');
+  }
+
+  function renderLogs(d) {
+    const logs = d.recent_logs || [];
+    if (logs.length === 0) return `<div class="panel-empty">No workout logs found.</div>`;
+
+    const rows = logs.map((l) => `
+      <div class="log-row">
+        <span class="log-date">${esc(l.date || 'unknown')}</span>
+        <span class="log-id">${l.id?.slice(0, 12)}…</span>
+      </div>`).join('');
+
+    return `
+      <div class="card">
+        <div class="card-title">Recent Workout Logs <span class="badge">${logs.length} entries</span></div>
+        <div class="card-body">${rows}</div>
+      </div>`;
+  }
+
+  function renderDataPanel(d) {
+    document.getElementById('tab-profile').innerHTML = renderProfile(d);
+    document.getElementById('tab-plan').innerHTML    = renderPlan(d);
+    document.getElementById('tab-chat').innerHTML    = renderChat(d);
+    document.getElementById('tab-logs').innerHTML    = renderLogs(d);
+  }
+
+  async function loadUserData() {
+    const userId = userIdEl.value.trim();
+    if (!userId) return;
+
+    ['profile','plan','chat','logs'].forEach((t) => {
+      document.getElementById('tab-' + t).innerHTML = '<div class="panel-empty">Loading…</div>';
+    });
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/tester-user-data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      renderDataPanel(data);
+    } catch (err) {
+      document.getElementById('tab-profile').innerHTML =
+        `<div class="panel-empty" style="color:#ff8080;">⚠ ${esc(err.message)}</div>`;
+    }
+  }
+
+  loadBtn.addEventListener('click', loadUserData);
+  refreshBtn.addEventListener('click', loadUserData);
+
+  // ── Chat ──────────────────────────────────────────────────────────────────
+  function clearEmptyState() {
+    const es = messagesEl.querySelector('.empty-state');
+    if (es) es.remove();
+  }
+
+  function addMessage(role, text, meta) {
+    clearEmptyState();
+    const wrap = document.createElement('div');
+    wrap.className = `message ${role}`;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = text;
+    wrap.appendChild(bubble);
+
+    if (meta) {
+      const m = document.createElement('div');
+      m.className = 'meta';
+      m.innerHTML = `${meta.intent || ''} <span class="agent-tag">${meta.routedTo || meta.agent || ''}</span>`;
+      wrap.appendChild(m);
+    }
+
+    messagesEl.appendChild(wrap);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  const ACTION_LABELS = {
+    save_profile:       { icon: '👤', label: 'Profile saved',     detail: (p) => `goal: ${p.goal} · level: ${p.fitness_level} · ${p.workout_days_per_week}x/week` },
+    update_plan:        { icon: '📅', label: 'Plan saved',        detail: (p) => p.planId ? `plan ID: ${p.planId}` : '7-day plan written to database' },
+    swap_exercise:      { icon: '🔄', label: 'Exercise swapped',  detail: (p) => `replaced with: ${p.exerciseName}` },
+    trim_workout:       { icon: '✂️',  label: 'Workout trimmed',   detail: (p) => p.targetMinutes ? `trimmed to ${p.targetMinutes} mins` : 'session shortened' },
+    navigate_to_screen: { icon: '📱', label: 'Navigate',          detail: (p) => `screen: ${p.screen}` },
+    show_chart:         { icon: '📊', label: 'Chart prepared',    detail: (p) => `type: ${p.chartType || 'progress'}` },
+    update_streak:      { icon: '🔥', label: 'Streak updated',    detail: (p) => `streak: ${p.streak ?? '—'}` },
+  };
+
+  function addActions(actions) {
+    if (!actions?.length) return;
+    const container = document.createElement('div');
+    container.className = 'actions-log';
+    actions.forEach((action) => {
+      const def = ACTION_LABELS[action.type] || { icon: '⚡', label: action.type, detail: () => JSON.stringify(action.payload) };
+      const item = document.createElement('div');
+      item.className = 'action-item';
+      item.innerHTML = `
+        <span class="action-icon">${def.icon}</span>
+        <span class="action-label">${def.label}</span>
+        <span class="action-detail">${def.detail(action.payload || {})}</span>`;
+      container.appendChild(item);
+    });
+    messagesEl.appendChild(container);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function addError(text) {
+    clearEmptyState();
+    const el = document.createElement('div');
+    el.className = 'error-bubble';
+    el.textContent = '⚠ ' + text;
+    messagesEl.appendChild(el);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function showTyping() {
+    const el = document.createElement('div');
+    el.className = 'typing'; el.id = 'typing-indicator';
+    el.textContent = 'SparkFit is thinking…';
+    messagesEl.appendChild(el);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function removeTyping() {
+    document.getElementById('typing-indicator')?.remove();
+  }
+
+  async function sendMessage() {
+    const userId  = userIdEl.value.trim();
+    const message = inputEl.value.trim();
+    if (!userId) { alert('Select a user first.'); return; }
+    if (!message) return;
+
+    addMessage('user', message);
+    inputEl.value = '';
+    inputEl.style.height = '48px';
+    sendBtn.disabled = true;
+    showTyping();
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/agent-orchestrator`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+        body: JSON.stringify({ userId, message, context: { screen: 'test-ui' } }),
+      });
+      const data = await res.json();
+      removeTyping();
+      if (!res.ok || data.error) {
+        addError(data.error || `HTTP ${res.status}`);
+      } else {
+        addMessage('ai', data.response, data._meta || { agent: data.agent });
+        addActions(data.actions);
+        loadUserData(); // auto-refresh data panel
+      }
+    } catch (err) {
+      removeTyping();
+      addError(err.message);
+    }
+
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+
+  sendBtn.addEventListener('click', sendMessage);
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = '48px';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+  });
+</script>
+
+</body>
+</html>

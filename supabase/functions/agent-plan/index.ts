@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js';
 import { handleCors, corsHeaders } from '../_shared/cors.ts';
 import { generateJSON, generateText } from '../_shared/gemini.ts';
 import { embedAndStore } from '../_shared/memory.ts';
+import { normalizePlan } from '../_shared/utils.ts';
 import type { AgentRequest, AgentResponse, WeekPlan, DayPlan } from '../_shared/types.ts';
 
 function getSupabaseAdmin() {
@@ -92,6 +93,41 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Confirm a previously proposed plan change (write to DB)
+    if (action === 'confirm_plan_change') {
+      const pendingPlan = context?.pendingPlan as WeekPlan | undefined;
+      if (!pendingPlan) {
+        return new Response(
+          JSON.stringify({ response: 'No pending plan to confirm.', agent: 'plan', actions: [] }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+      const { data: existingPlan } = await supabase
+        .from('workout_plans')
+        .select('id')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (existingPlan) {
+        await supabase.from('workout_plans').update({ plan_data: pendingPlan }).eq('id', existingPlan.id);
+        return new Response(
+          JSON.stringify({
+            response: "Done! Your updated plan has been saved.",
+            actions: [{ type: 'update_plan', payload: { planId: existingPlan.id, plan: pendingPlan } }],
+            agent: 'plan',
+          } as AgentResponse),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      } else {
+        return new Response(
+          JSON.stringify({ response: "Couldn't find your plan to update.", agent: 'plan', actions: [] }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+    }
+
     // Handle explicit actions
     if (action === 'generate_weekly_plan') {
       const plan = await generateWeeklyPlan(profile);
@@ -153,7 +189,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const currentPlan: WeekPlan = planRow.plan_data as WeekPlan;
+    const currentPlan: WeekPlan = normalizePlan(planRow.plan_data);
     const dayNames = currentPlan.map((d) => d.day);
 
     // Use Gemini JSON mode to parse what the user wants to do
@@ -205,12 +241,15 @@ Return JSON with action, day_a, day_b (if swap_days), and response (your reply t
       updatedPlan[idxA] = { ...updatedPlan[idxA], ...contentB };
       updatedPlan[idxB] = { ...updatedPlan[idxB], ...contentA };
 
-      await supabase.from('workout_plans').update({ plan_data: updatedPlan }).eq('id', planRow.id);
-
+      // Propose the change — do NOT write to DB yet; user must confirm
+      const changeSummary = `I'll swap ${intent.day_a} and ${intent.day_b}'s workouts. ${intent.response}`;
       return new Response(
         JSON.stringify({
-          response: intent.response,
-          actions: [{ type: 'update_plan', payload: { planId: planRow.id } }],
+          response: changeSummary,
+          actions: [{
+            type: 'propose_plan_change',
+            payload: { proposed_plan: updatedPlan, change_summary: changeSummary, plan_id: planRow.id },
+          }],
           agent: 'plan',
         } as AgentResponse),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -220,12 +259,15 @@ Return JSON with action, day_a, day_b (if swap_days), and response (your reply t
     // Execute regenerate
     if (intent.action === 'regenerate') {
       const newPlan = await generateWeeklyPlan(profile);
-      await supabase.from('workout_plans').update({ plan_data: newPlan }).eq('id', planRow.id);
-
+      // Propose the new plan — do NOT write to DB yet; user must confirm
+      const changeSummary = `I've generated a brand-new 7-day plan for you. ${intent.response}`;
       return new Response(
         JSON.stringify({
-          response: intent.response,
-          actions: [{ type: 'update_plan', payload: { planId: planRow.id } }],
+          response: changeSummary,
+          actions: [{
+            type: 'propose_plan_change',
+            payload: { proposed_plan: newPlan, change_summary: changeSummary, plan_id: planRow.id },
+          }],
           agent: 'plan',
         } as AgentResponse),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
