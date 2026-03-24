@@ -1,11 +1,14 @@
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useEffect } from 'react';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { supabase } from '../services/supabase';
 
 // Import Types
 import { RootStackParamList, AuthStackParamList, OnboardingStackParamList, MainTabParamList } from '../types/navigation';
 import { CustomTabBar } from './CustomTabBar';
+
+export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 // Import Screens
 import { WelcomeScreen } from '../screens/WelcomeScreen';
@@ -80,8 +83,17 @@ const linking = {
 };
 
 export const AppNavigator = () => {
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT' && navigationRef.isReady()) {
+        navigationRef.reset({ index: 0, routes: [{ name: 'Auth' }] });
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
   return (
-    <NavigationContainer linking={linking as any}>
+    <NavigationContainer ref={navigationRef} linking={linking as any}>
       <RootStack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Auth">
         <RootStack.Screen name="Auth" component={AuthNavigator} />
         <RootStack.Screen name="Onboarding" component={OnboardingNavigator} />
