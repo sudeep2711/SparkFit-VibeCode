@@ -65,35 +65,32 @@ const TabItem = ({
   const config = TAB_CONFIG[routeName as TabKey];
   if (!config) return null;
 
-  // Spring bounce on every press
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  // Card background fades in/out (native driver → smooth 60fps)
+  // Card background fades in/out when focused
   const cardOpacity = useRef(new Animated.Value(isFocused ? 1 : 0)).current;
 
+  // Glow flash: quick neon burst on every tap
+  const glowOpacity = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
-    Animated.spring(cardOpacity, {
+    Animated.timing(cardOpacity, {
       toValue: isFocused ? 1 : 0,
+      duration: 200,
       useNativeDriver: true,
-      tension: 180,
-      friction: 14,
     }).start();
   }, [isFocused]);
 
   const handlePress = () => {
-    // Compress then release
+    // Flash neon glow in then out quickly
     Animated.sequence([
-      Animated.spring(scaleAnim, {
-        toValue: 0.80,
-        useNativeDriver: true,
-        tension: 500,
-        friction: 10,
-      }),
-      Animated.spring(scaleAnim, {
+      Animated.timing(glowOpacity, {
         toValue: 1,
+        duration: 80,
         useNativeDriver: true,
-        tension: 200,
-        friction: 7,
+      }),
+      Animated.timing(glowOpacity, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
       }),
     ]).start();
     onPress();
@@ -112,11 +109,17 @@ const TabItem = ({
       accessibilityRole="button"
       accessibilityState={{ selected: isFocused }}
     >
-      <Animated.View style={[styles.tabInner, { transform: [{ scale: scaleAnim }] }]}>
+      <Animated.View style={styles.tabInner}>
 
-        {/* Animated blue card (opacity-only, native driver) */}
+        {/* Focused: solid blue card */}
         <Animated.View
           style={[styles.activeCard, { opacity: cardOpacity }]}
+          pointerEvents="none"
+        />
+
+        {/* Tap: neon glow burst (brighter, slightly larger bleed) */}
+        <Animated.View
+          style={[styles.glowCard, { opacity: glowOpacity }]}
           pointerEvents="none"
         />
 
@@ -220,6 +223,19 @@ const styles = StyleSheet.create({
     backgroundColor: C.cardActive,
     borderRadius: 16,
     marginHorizontal: 4,
+  },
+
+  // Neon glow burst — slightly larger bleed, high-opacity neon blue
+  glowCard: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#6B8FFF',
+    borderRadius: 18,
+    marginHorizontal: 0,
+    shadowColor: '#4A6FFF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    elevation: 12,
   },
 
   tabContent: {
