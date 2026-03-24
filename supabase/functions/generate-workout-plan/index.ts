@@ -40,11 +40,15 @@ The JSON must adhere strictly to this format:
     {
       "day": "Day 1",
       "focus": "String description of muscle group or cardio",
+      "is_rest_day": false,
+      "estimated_total_time_mins": 55,
+      "primary_muscle_group": "One of: chest | back | legs | shoulders | arms | core | full_body | cardio | active_recovery | rest",
+      "effort_level": "One of: easy | moderate | hard | rest",
       "exercises": [
-        { 
-            "name": "Exercise Name", 
+        {
+            "name": "Exercise Name",
             "type": "strength | cardio | interval | calisthenics | isometric",
-            "sets": number (optional, for strength/calisthenics/isometric), 
+            "sets": number (optional, for strength/calisthenics/isometric),
             "reps": number (optional, for strength/calisthenics),
             "estimated_time_secs": number (total active time for all sets, realistic for the movement and experience level),
             "estimated_rest_time_secs": number (total rest time for all sets, realistic for the movement and experience level),

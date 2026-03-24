@@ -2,7 +2,6 @@ export type RootStackParamList = {
   Auth: undefined;
   Onboarding: undefined;
   Main: undefined;
-  WorkoutPlan: undefined;
   WorkoutActive: { planId: string; dailyPlan: any };
   WorkoutSummary: { planId: string; logId: string; stats: any };
   MidWorkoutChat: { exerciseName: string; currentSet: number; targetSets: number; coachTip?: string };
@@ -19,6 +18,7 @@ export type OnboardingStackParamList = {
 
 export type MainTabParamList = {
   Dashboard: undefined;
+  WorkoutPlan: undefined;
   Progress: undefined;
   AICoach: undefined;
   Profile: undefined;

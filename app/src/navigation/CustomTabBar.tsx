@@ -8,7 +8,7 @@ const NEON = '#00F5FF';
 const GRAY = '#404040';
 const BG   = '#111111';
 
-type TabKey = 'Dashboard' | 'Progress' | 'AICoach' | 'Profile';
+type TabKey = 'Dashboard' | 'WorkoutPlan' | 'Progress' | 'AICoach' | 'Profile';
 
 type TabConfig = {
   label: string;
@@ -19,10 +19,11 @@ type TabConfig = {
 };
 
 const TAB_CONFIG: Record<TabKey, TabConfig> = {
-  Dashboard: { label: 'WORKOUT',  icon: 'barbell-outline',  activeIcon: 'barbell', rotate: '-35deg' },
-  Progress:  { label: 'INSIGHTS', icon: 'pulse-outline',    activeIcon: 'pulse',   overlayIcon: 'sparkles' },
-  AICoach:   { label: 'SPARK AI', icon: 'flash-outline',    activeIcon: 'flash' },
-  Profile:   { label: 'PROFILE',  icon: 'person-outline',   activeIcon: 'person' },
+  Dashboard:   { label: 'WORKOUT',  icon: 'barbell-outline',   activeIcon: 'barbell',  rotate: '-35deg' },
+  WorkoutPlan: { label: 'PLAN',     icon: 'calendar-outline',  activeIcon: 'calendar' },
+  Progress:    { label: 'INSIGHTS', icon: 'pulse-outline',     activeIcon: 'pulse',    overlayIcon: 'sparkles' },
+  AICoach:     { label: 'SPARK AI', icon: 'flash-outline',     activeIcon: 'flash' },
+  Profile:     { label: 'PROFILE',  icon: 'person-outline',    activeIcon: 'person' },
 };
 
 // Renders an icon, handling rotation and INSIGHTS composite

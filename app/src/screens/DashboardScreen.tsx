@@ -6,7 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
 
-type DailyLogNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Main'>;
+type DailyLogNavigationProp = NativeStackNavigationProp<RootStackParamList & { WorkoutPlan: undefined }, 'Main'>;
 
 type Exercise = {
   name: string;

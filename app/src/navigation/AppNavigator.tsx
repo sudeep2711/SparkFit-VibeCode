@@ -46,6 +46,7 @@ const MainTabNavigator = () => (
     screenOptions={{ headerShown: false }}
   >
     <MainTab.Screen name="Dashboard" component={DashboardScreen} />
+    <MainTab.Screen name="WorkoutPlan" component={WorkoutPlanScreen} />
     <MainTab.Screen name="Progress" component={ProgressScreen} />
     <MainTab.Screen name="AICoach" component={AICoachScreen} />
     <MainTab.Screen name="Profile" component={ProfileScreen} />
@@ -69,12 +70,12 @@ const linking = {
       Main: {
         screens: {
           Dashboard: 'dashboard',
+          WorkoutPlan: 'plan',
           Progress: 'progress',
           AICoach: 'coach',
           Profile: 'profile',
         },
       },
-      WorkoutPlan: 'plan',
       WorkoutActive: 'workout-active',
       WorkoutSummary: 'workout-summary',
       MidWorkoutChat: 'mid-workout-chat',
@@ -98,9 +99,6 @@ export const AppNavigator = () => {
         <RootStack.Screen name="Auth" component={AuthNavigator} />
         <RootStack.Screen name="Onboarding" component={OnboardingNavigator} />
         <RootStack.Screen name="Main" component={MainTabNavigator} />
-
-        {/* 7-Day Plan — accessed from Dashboard */}
-        <RootStack.Screen name="WorkoutPlan" component={WorkoutPlanScreen} />
 
         {/* Full Screen Workout Flow */}
         <RootStack.Screen
