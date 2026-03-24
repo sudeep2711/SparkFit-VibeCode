@@ -1,11 +1,11 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 // Import Types
 import { RootStackParamList, AuthStackParamList, OnboardingStackParamList, MainTabParamList } from '../types/navigation';
+import { CustomTabBar } from './CustomTabBar';
 
 // Import Screens
 import { WelcomeScreen } from '../screens/WelcomeScreen';
@@ -39,48 +39,13 @@ const OnboardingNavigator = () => (
 
 const MainTabNavigator = () => (
   <MainTab.Navigator
-    screenOptions={({ route }) => ({
-      tabBarIcon: ({ focused, color, size }) => {
-        let iconName: keyof typeof Ionicons.glyphMap = 'help-circle-outline';
-
-        if (route.name === 'Dashboard') {
-          iconName = focused ? 'barbell' : 'barbell-outline';
-        } else if (route.name === 'Progress') {
-          iconName = focused ? 'stats-chart' : 'stats-chart-outline';
-        } else if (route.name === 'AICoach') {
-          iconName = focused ? 'flash' : 'flash-outline';
-        } else if (route.name === 'Profile') {
-          iconName = focused ? 'person' : 'person-outline';
-        }
-
-        return <Ionicons name={iconName} size={size} color={color} />;
-      },
-      tabBarActiveTintColor: '#CBFF5B',
-      tabBarInactiveTintColor: '#555',
-      tabBarStyle: { backgroundColor: '#0D0D0D', borderTopColor: '#1C1C1E' },
-      tabBarLabelStyle: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
-    })}
+    tabBar={(props) => <CustomTabBar {...props} />}
+    screenOptions={{ headerShown: false }}
   >
-    <MainTab.Screen
-      name="Dashboard"
-      component={DashboardScreen}
-      options={{ tabBarLabel: 'WORKOUT', headerShown: false }}
-    />
-    <MainTab.Screen
-      name="Progress"
-      component={ProgressScreen}
-      options={{ tabBarLabel: 'INSIGHTS', headerShown: false }}
-    />
-    <MainTab.Screen
-      name="AICoach"
-      component={AICoachScreen}
-      options={{ tabBarLabel: 'SPARK AI', headerShown: false }}
-    />
-    <MainTab.Screen
-      name="Profile"
-      component={ProfileScreen}
-      options={{ tabBarLabel: 'PROFILE', headerShown: false }}
-    />
+    <MainTab.Screen name="Dashboard" component={DashboardScreen} />
+    <MainTab.Screen name="Progress" component={ProgressScreen} />
+    <MainTab.Screen name="AICoach" component={AICoachScreen} />
+    <MainTab.Screen name="Profile" component={ProfileScreen} />
   </MainTab.Navigator>
 );
 
