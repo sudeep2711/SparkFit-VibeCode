@@ -12,10 +12,9 @@ import { WelcomeScreen } from '../screens/WelcomeScreen';
 import { AIOnboardingChatScreen } from '../screens/AIOnboardingChatScreen';
 import { DashboardScreen } from '../screens/DashboardScreen';
 import { WorkoutPlanScreen } from '../screens/WorkoutPlanScreen';
-import { DailyLogScreen } from '../screens/DailyLogScreen';
 import { ProgressScreen } from '../screens/ProgressScreen';
 import { AICoachScreen } from '../screens/AICoachScreen';
-import { ProfileScreen } from '../screens/ProfileScreen'; // Not in MVP tabs directly, but good to have
+import { ProfileScreen } from '../screens/ProfileScreen';
 import { WorkoutActiveScreen } from '../screens/WorkoutActiveScreen';
 import { WorkoutSummaryScreen } from '../screens/WorkoutSummaryScreen';
 import { MidWorkoutChatScreen } from '../screens/MidWorkoutChatScreen';
@@ -45,26 +44,43 @@ const MainTabNavigator = () => (
         let iconName: keyof typeof Ionicons.glyphMap = 'help-circle-outline';
 
         if (route.name === 'Dashboard') {
-          iconName = focused ? 'home' : 'home-outline';
-        } else if (route.name === 'WorkoutPlan') {
-          iconName = focused ? 'calendar' : 'calendar-outline';
+          iconName = focused ? 'barbell' : 'barbell-outline';
         } else if (route.name === 'Progress') {
           iconName = focused ? 'stats-chart' : 'stats-chart-outline';
         } else if (route.name === 'AICoach') {
-          iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
+          iconName = focused ? 'flash' : 'flash-outline';
+        } else if (route.name === 'Profile') {
+          iconName = focused ? 'person' : 'person-outline';
         }
 
         return <Ionicons name={iconName} size={size} color={color} />;
       },
-      tabBarActiveTintColor: '#007AFF',
-      tabBarInactiveTintColor: 'gray',
+      tabBarActiveTintColor: '#CBFF5B',
+      tabBarInactiveTintColor: '#555',
+      tabBarStyle: { backgroundColor: '#0D0D0D', borderTopColor: '#1C1C1E' },
+      tabBarLabelStyle: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
     })}
   >
-    <MainTab.Screen name="Dashboard" component={DashboardScreen} />
-    <MainTab.Screen name="WorkoutPlan" component={WorkoutPlanScreen} />
-    {/* DailyLog might be better as a modal stack on top of Main, but keeping here for strict MVP tab simplicity */}
-    <MainTab.Screen name="Progress" component={ProgressScreen} />
-    <MainTab.Screen name="AICoach" component={AICoachScreen} />
+    <MainTab.Screen
+      name="Dashboard"
+      component={DashboardScreen}
+      options={{ tabBarLabel: 'WORKOUT', headerShown: false }}
+    />
+    <MainTab.Screen
+      name="Progress"
+      component={ProgressScreen}
+      options={{ tabBarLabel: 'INSIGHTS', headerShown: false }}
+    />
+    <MainTab.Screen
+      name="AICoach"
+      component={AICoachScreen}
+      options={{ tabBarLabel: 'SPARK AI', headerShown: false }}
+    />
+    <MainTab.Screen
+      name="Profile"
+      component={ProfileScreen}
+      options={{ tabBarLabel: 'PROFILE', headerShown: false }}
+    />
   </MainTab.Navigator>
 );
 
@@ -85,11 +101,12 @@ const linking = {
       Main: {
         screens: {
           Dashboard: 'dashboard',
-          WorkoutPlan: 'plan',
           Progress: 'progress',
           AICoach: 'coach',
+          Profile: 'profile',
         },
       },
+      WorkoutPlan: 'plan',
       WorkoutActive: 'workout-active',
       WorkoutSummary: 'workout-summary',
       MidWorkoutChat: 'mid-workout-chat',
@@ -105,11 +122,14 @@ export const AppNavigator = () => {
         <RootStack.Screen name="Onboarding" component={OnboardingNavigator} />
         <RootStack.Screen name="Main" component={MainTabNavigator} />
 
+        {/* 7-Day Plan — accessed from Dashboard */}
+        <RootStack.Screen name="WorkoutPlan" component={WorkoutPlanScreen} />
+
         {/* Full Screen Workout Flow */}
         <RootStack.Screen
           name="WorkoutActive"
           component={WorkoutActiveScreen}
-          options={{ gestureEnabled: false }} // Prevent swiping back accidentally during workout
+          options={{ gestureEnabled: false }}
         />
         <RootStack.Screen
           name="WorkoutSummary"

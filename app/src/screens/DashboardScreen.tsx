@@ -284,13 +284,21 @@ export const DashboardScreen = () => {
 
             <View style={styles.subTitleRow}>
               <Text style={styles.subTitle}>Exercises</Text>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('ChangeWorkoutChat', { planId: planId || '' })}
-                style={styles.changeWorkoutButton}
-              >
-                <Ionicons name="refresh-circle" size={18} color="#007AFF" />
-                <Text style={styles.changeWorkoutText}>New Workout</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('WorkoutPlan')}
+                  style={styles.viewPlanButton}
+                >
+                  <Text style={styles.viewPlanText}>View 7-Day Plan →</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('ChangeWorkoutChat', { planId: planId || '' })}
+                  style={styles.changeWorkoutButton}
+                >
+                  <Ionicons name="refresh-circle" size={18} color="#007AFF" />
+                  <Text style={styles.changeWorkoutText}>New Workout</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <FlatList
@@ -405,6 +413,15 @@ const styles = StyleSheet.create({
   subTitle: {
     fontSize: 20,
     fontWeight: 'bold',
+  },
+  viewPlanButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  viewPlanText: {
+    color: '#007AFF',
+    fontWeight: '600',
+    fontSize: 13,
   },
   changeWorkoutButton: {
     flexDirection: 'row',
