@@ -4,53 +4,52 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 
-// ── Design tokens ──────────────────────────────────────────────
-const C = {
-  bg: '#111111',
-  cardActive: '#4A6FFF',
-  iconActive: '#ffffff',
-  iconInactive: '#4A4A4A',
-  labelActive: '#ffffff',
-  labelInactive: '#3E3E3E',
-  border: 'rgba(255,255,255,0.06)',
-};
+const NEON = '#00F5FF';
+const GRAY = '#404040';
+const BG   = '#111111';
 
 type TabKey = 'Dashboard' | 'Progress' | 'AICoach' | 'Profile';
 
 type TabConfig = {
   label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  activeIcon: keyof typeof Ionicons.glyphMap;
+  icon: keyof typeof Ionicons.glyphMap;        // inactive (outline)
+  activeIcon: keyof typeof Ionicons.glyphMap;  // active (filled)
   rotate?: string;
   overlayIcon?: keyof typeof Ionicons.glyphMap;
 };
 
 const TAB_CONFIG: Record<TabKey, TabConfig> = {
-  Dashboard: {
-    label: 'WORKOUT',
-    icon: 'barbell-outline',
-    activeIcon: 'barbell',
-    rotate: '-35deg',
-  },
-  Progress: {
-    label: 'INSIGHTS',
-    icon: 'pulse-outline',
-    activeIcon: 'pulse',
-    overlayIcon: 'sparkles',
-  },
-  AICoach: {
-    label: 'SPARK AI',
-    icon: 'flash-outline',
-    activeIcon: 'flash',
-  },
-  Profile: {
-    label: 'PROFILE',
-    icon: 'person-outline',
-    activeIcon: 'person',
-  },
+  Dashboard: { label: 'WORKOUT',  icon: 'barbell-outline',  activeIcon: 'barbell', rotate: '-35deg' },
+  Progress:  { label: 'INSIGHTS', icon: 'pulse-outline',    activeIcon: 'pulse',   overlayIcon: 'sparkles' },
+  AICoach:   { label: 'SPARK AI', icon: 'flash-outline',    activeIcon: 'flash' },
+  Profile:   { label: 'PROFILE',  icon: 'person-outline',   activeIcon: 'person' },
 };
 
-// ── Single tab item ─────────────────────────────────────────────
+// Renders an icon, handling rotation and INSIGHTS composite
+const Icon = ({
+  name,
+  color,
+  rotate,
+  overlayIcon,
+}: {
+  name: keyof typeof Ionicons.glyphMap;
+  color: string;
+  rotate?: string;
+  overlayIcon?: keyof typeof Ionicons.glyphMap;
+}) => (
+  <View style={rotate ? { transform: [{ rotate }] } : undefined}>
+    {overlayIcon ? (
+      <View style={styles.compositeWrapper}>
+        <Ionicons name={name} size={20} color={color} />
+        <Ionicons name={overlayIcon} size={9} color={color} style={styles.sparkleOverlay} />
+      </View>
+    ) : (
+      <Ionicons name={name} size={22} color={color} />
+    )}
+  </View>
+);
+
+// ── Tab item ────────────────────────────────────────────────────
 const TabItem = ({
   routeName,
   isFocused,
@@ -65,40 +64,31 @@ const TabItem = ({
   const config = TAB_CONFIG[routeName as TabKey];
   if (!config) return null;
 
-  // Card background fades in/out when focused
-  const cardOpacity = useRef(new Animated.Value(isFocused ? 1 : 0)).current;
+  // Single animated value drives everything
+  const glow = useRef(new Animated.Value(isFocused ? 1 : 0)).current;
 
-  // Glow flash: quick neon burst on every tap
-  const glowOpacity = useRef(new Animated.Value(0)).current;
+  // Gray icon fades out as neon fades in (perfect cross-fade, no outline)
+  const grayOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
+  // Blob behind icon: stays subtle even at peak
+  const blobOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.18] });
 
   useEffect(() => {
-    Animated.timing(cardOpacity, {
+    Animated.timing(glow, {
       toValue: isFocused ? 1 : 0,
-      duration: 200,
+      duration: 180,
       useNativeDriver: true,
     }).start();
   }, [isFocused]);
 
   const handlePress = () => {
-    // Flash neon glow in then out quickly
+    const target = isFocused ? 1 : 0;
+    // Snap to full glow, then ease back to resting state
     Animated.sequence([
-      Animated.timing(glowOpacity, {
-        toValue: 1,
-        duration: 80,
-        useNativeDriver: true,
-      }),
-      Animated.timing(glowOpacity, {
-        toValue: 0,
-        duration: 220,
-        useNativeDriver: true,
-      }),
+      Animated.timing(glow, { toValue: 1,      duration: 60,  useNativeDriver: true }),
+      Animated.timing(glow, { toValue: target,  duration: 280, useNativeDriver: true }),
     ]).start();
     onPress();
   };
-
-  const iconColor = isFocused ? C.iconActive : C.iconInactive;
-  const labelColor = isFocused ? C.labelActive : C.labelInactive;
-  const iconName = isFocused ? config.activeIcon : config.icon;
 
   return (
     <TouchableOpacity
@@ -109,42 +99,28 @@ const TabItem = ({
       accessibilityRole="button"
       accessibilityState={{ selected: isFocused }}
     >
-      <Animated.View style={styles.tabInner}>
+      <View style={styles.tabContent}>
 
-        {/* Focused: solid blue card */}
-        <Animated.View
-          style={[styles.activeCard, { opacity: cardOpacity }]}
-          pointerEvents="none"
-        />
+        <View style={styles.iconWrapper}>
+          {/* Soft cyan blob — creates diffuse glow, no hard edge */}
+          <Animated.View style={[styles.glowBlob, { opacity: blobOpacity }]} pointerEvents="none" />
 
-        {/* Tap: neon glow burst (brighter, slightly larger bleed) */}
-        <Animated.View
-          style={[styles.glowCard, { opacity: glowOpacity }]}
-          pointerEvents="none"
-        />
+          {/* Gray outline icon (fades out) */}
+          <Animated.View style={[styles.iconLayer, { opacity: grayOpacity }]} pointerEvents="none">
+            <Icon name={config.icon} color={GRAY} rotate={config.rotate} overlayIcon={config.overlayIcon} />
+          </Animated.View>
 
-        {/* Icon + label */}
-        <View style={styles.tabContent}>
-          {/* Icon (with optional rotation and overlay sparkle for INSIGHTS) */}
-          <View style={config.rotate ? { transform: [{ rotate: config.rotate }] } : undefined}>
-            {config.overlayIcon ? (
-              <View style={styles.compositeIcon}>
-                <Ionicons name={iconName} size={20} color={iconColor} />
-                <Ionicons
-                  name={config.overlayIcon}
-                  size={9}
-                  color={iconColor}
-                  style={styles.overlayIcon}
-                />
-              </View>
-            ) : (
-              <Ionicons name={iconName} size={22} color={iconColor} />
-            )}
-          </View>
-
-          <Text style={[styles.label, { color: labelColor }]}>{config.label}</Text>
+          {/* Neon solid icon (fades in) */}
+          <Animated.View style={[styles.iconLayer, { opacity: glow }]} pointerEvents="none">
+            <Icon name={config.activeIcon} color={NEON} rotate={config.rotate} overlayIcon={config.overlayIcon} />
+          </Animated.View>
         </View>
-      </Animated.View>
+
+        <Text style={[styles.label, { color: isFocused ? '#ffffff' : '#383838' }]}>
+          {config.label}
+        </Text>
+
+      </View>
     </TouchableOpacity>
   );
 };
@@ -170,17 +146,13 @@ export const CustomTabBar = ({ state, descriptors, navigation }: BottomTabBarPro
             }
           };
 
-          const onLongPress = () => {
-            navigation.emit({ type: 'tabLongPress', target: route.key });
-          };
-
           return (
             <TabItem
               key={route.key}
               routeName={route.name}
               isFocused={isFocused}
               onPress={onPress}
-              onLongPress={onLongPress}
+              onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
             />
           );
         })}
@@ -191,59 +163,60 @@ export const CustomTabBar = ({ state, descriptors, navigation }: BottomTabBarPro
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: C.bg,
+    backgroundColor: BG,
     borderTopWidth: 1,
-    borderTopColor: C.border,
-    paddingTop: 6,
-    paddingHorizontal: 6,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+    paddingTop: 8,
+    paddingHorizontal: 4,
   },
   bar: {
     flexDirection: 'row',
-    alignItems: 'center',
   },
-
-  // Each tab takes equal width
   tabItem: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  tabInner: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    borderRadius: 16,
-    minHeight: 60,
-  },
-
-  // Blue pill — absolutely fills tabInner
-  activeCard: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: C.cardActive,
-    borderRadius: 16,
-    marginHorizontal: 4,
-  },
-
-  // Neon glow burst — slightly larger bleed, high-opacity neon blue
-  glowCard: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#6B8FFF',
-    borderRadius: 18,
-    marginHorizontal: 0,
-    shadowColor: '#4A6FFF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 16,
-    elevation: 12,
-  },
-
   tabContent: {
     alignItems: 'center',
+    paddingVertical: 8,
+    gap: 5,
+  },
+
+  // Fixed-size container so all three absolute layers stack correctly
+  iconWrapper: {
+    width: 48,
+    height: 36,
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    gap: 4,
+  },
+
+  // Diffuse glow blob: larger than icon, rounded, low opacity
+  glowBlob: {
+    position: 'absolute',
+    width: 52,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: NEON,
+  },
+
+  // Each icon layer sits centered on top of the blob
+  iconLayer: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // INSIGHTS composite (pulse + sparkle)
+  compositeWrapper: {
+    width: 32,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sparkleOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
   },
 
   label: {
@@ -251,18 +224,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.7,
     textAlign: 'center',
-  },
-
-  // INSIGHTS: pulse line with sparkle overlay
-  compositeIcon: {
-    width: 28,
-    height: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  overlayIcon: {
-    position: 'absolute',
-    top: -3,
-    right: -3,
   },
 });
