@@ -36,6 +36,7 @@ const C = {
   surface: '#1c1b1b',
   surfaceRaised: '#242424',
   blue: '#2E7BFF',
+  orange: '#FF9500',
   lime: '#eaffb9',
   teal: '#00C9B8',
   lavender: '#9B8DE8',
@@ -169,13 +170,14 @@ export const ProfileScreen = () => {
             <Text style={[styles.statValue, { color: C.lime }]}>{stats?.totalWorkouts ?? 0}</Text>
           </View>
 
-          {/* Streak — blue accent */}
+          {/* Streak — orange accent */}
           <View style={styles.statCard}>
-            <DotGrid color={C.blue} />
+            <DotGrid color={C.orange} />
             <Text style={styles.statLabel}>CURRENT{'\n'}STREAK</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4 }}>
-              <Text style={[styles.statValue, { color: C.blue }]}>{stats?.currentStreak ?? 0}</Text>
-              <Text style={[styles.statUnit, { color: C.blue }]}>DAYS</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6 }}>
+              <Text style={[styles.statValue, { color: C.orange }]}>{stats?.currentStreak ?? 0}</Text>
+              <Text style={[styles.statUnit, { color: C.orange }]}>DAYS</Text>
+              <Text style={{ fontSize: 22, paddingBottom: 6 }}>🔥</Text>
             </View>
           </View>
         </View>
@@ -287,34 +289,61 @@ export const ProfileScreen = () => {
   );
 };
 
-// ── Dot grid decoration for stat cards ──
-const DotGrid = ({ color }: { color: string }) => {
-  const dots = [];
-  for (let r = 0; r < 4; r++) {
-    for (let c = 0; c < 6; c++) {
-      dots.push(
-        <View
-          key={`${r}-${c}`}
-          style={{
-            width: 3,
-            height: 3,
-            borderRadius: 1.5,
-            backgroundColor: color,
-            opacity: 0.12,
-            margin: 3,
-          }}
-        />
-      );
-    }
-  }
+// ── Halftone dot grid — top-left + bottom-right corners with radial fade ──
+const ROWS = 7;
+const COLS = 8;
+const DOT = 3;
+const SPACING = 7;
+const PEAK_OPACITY = 0.28; // barely visible but present
+
+const HalftoneCorner = ({
+  color,
+  corner,
+}: {
+  color: string;
+  corner: 'topLeft' | 'bottomRight';
+}) => {
+  const maxDist = Math.sqrt((ROWS - 1) ** 2 + (COLS - 1) ** 2);
+
   return (
-    <View style={styles.dotGrid}>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', width: 72 }}>
-        {dots}
-      </View>
+    <View
+      style={corner === 'topLeft' ? styles.dotGridTopLeft : styles.dotGridBottomRight}
+      pointerEvents="none"
+    >
+      {Array.from({ length: ROWS }, (_, r) => (
+        <View key={r} style={{ flexDirection: 'row' }}>
+          {Array.from({ length: COLS }, (_, c) => {
+            // For top-left: distance from (0,0); for bottom-right: distance from (ROWS-1, COLS-1)
+            const dr = corner === 'topLeft' ? r : ROWS - 1 - r;
+            const dc = corner === 'topLeft' ? c : COLS - 1 - c;
+            const dist = Math.sqrt(dr ** 2 + dc ** 2);
+            const opacity = Math.max(0, PEAK_OPACITY * (1 - dist / (maxDist * 0.72)));
+            return (
+              <View
+                key={c}
+                style={{
+                  width: DOT,
+                  height: DOT,
+                  borderRadius: DOT / 2,
+                  backgroundColor: color,
+                  opacity,
+                  margin: (SPACING - DOT) / 2,
+                }}
+              />
+            );
+          })}
+        </View>
+      ))}
     </View>
   );
 };
+
+const DotGrid = ({ color }: { color: string }) => (
+  <>
+    <HalftoneCorner color={color} corner="topLeft" />
+    <HalftoneCorner color={color} corner="bottomRight" />
+  </>
+);
 
 // ── Reusable menu row ──
 const MenuRow = ({
@@ -444,11 +473,15 @@ const styles = StyleSheet.create({
     minHeight: 130,
     justifyContent: 'flex-end',
   },
-  dotGrid: {
+  dotGridTopLeft: {
     position: 'absolute',
-    top: 10,
-    right: 10,
-    opacity: 1,
+    top: 0,
+    left: 0,
+  },
+  dotGridBottomRight: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
   },
   statLabel: {
     fontSize: 10,
