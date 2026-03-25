@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   SafeAreaView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -14,6 +15,7 @@ import {
   Wind, Layers, Moon, Repeat, Timer, Waves,
   type LucideIcon,
 } from 'lucide-react-native';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 
@@ -62,6 +64,10 @@ type PlanData = {
 
 // ── Helpers ──────────────────────────────────────────────────────
 const DAY_ABBREVS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 function deriveMuscleGroup(dailyPlan: DailyPlan): string {
   if (dailyPlan.is_rest_day) return 'rest';
@@ -209,6 +215,9 @@ function getUpcomingSubtitle(dailyPlan: DailyPlan): string {
   return `${dailyPlan.exercises.length} exercises · ${mins} min`;
 }
 
+// ── Types ────────────────────────────────────────────────────────
+type DragItem = { key: string };
+
 // ── Screen ───────────────────────────────────────────────────────
 export const WorkoutPlanScreen = () => {
   const navigation = useNavigation<any>();
@@ -219,6 +228,7 @@ export const WorkoutPlanScreen = () => {
   const [planId, setPlanId] = useState<string | null>(null);
   const [dateToDayMap, setDateToDayMap] = useState<Record<string, DailyPlan>>({});
   const [weekDates, setWeekDates] = useState<string[]>([]);
+  const [scheduleOrder, setScheduleOrder] = useState<DragItem[]>([]);
   const [selectedDateString, setSelectedDateString] = useState<string>('');
 
   useEffect(() => {
@@ -261,15 +271,16 @@ export const WorkoutPlanScreen = () => {
         weekPlan.forEach((dailyPlan: DailyPlan, index: number) => {
           const d = new Date(startDate);
           d.setDate(startDate.getDate() + index);
-          const dateStr = d.toISOString().split('T')[0];
+          const dateStr = localDateStr(d);
           newDateMap[dateStr] = dailyPlan;
           dates.push(dateStr);
         });
 
         setDateToDayMap(newDateMap);
         setWeekDates(dates);
+        setScheduleOrder(dates.map(d => ({ key: d })));
 
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = localDateStr(new Date());
         const initial = newDateMap[todayStr] ? todayStr : dates[0];
         if (initial) setSelectedDateString(initial);
       }
@@ -279,6 +290,82 @@ export const WorkoutPlanScreen = () => {
       setLoading(false);
     }
   };
+
+  const todayStr = localDateStr(new Date());
+
+  const handleDragEnd = useCallback(async (newOrder: DragItem[]) => {
+    const newMap: Record<string, DailyPlan> = {};
+    newOrder.forEach((item, idx) => {
+      newMap[weekDates[idx]] = dateToDayMap[item.key];
+    });
+    setDateToDayMap(newMap);
+    setScheduleOrder(newOrder);
+
+    if (planId) {
+      const newWeekPlan = weekDates.map(d => newMap[d]).filter(Boolean);
+      await supabase
+        .from('workout_plans')
+        .update({ plan_data: { week_plan: newWeekPlan } })
+        .eq('id', planId);
+    }
+  }, [weekDates, dateToDayMap, planId]);
+
+  const renderScheduleItem = useCallback(({ item, drag, isActive, getIndex }: RenderItemParams<DragItem>) => {
+    const dateStr = item.key;
+    const idx = getIndex?.() ?? 0;
+    const dailyPlan = dateToDayMap[dateStr];
+    if (!dailyPlan) return null;
+    const dateObj = new Date(dateStr + 'T00:00:00');
+    const dayAbbr = DAY_ABBREVS[dateObj.getDay()];
+    const dateNum = dateObj.getDate();
+    const muscle = deriveMuscleGroup(dailyPlan);
+    const effort = deriveEffortLevel(dailyPlan);
+    const DayIcon = getMuscleIcon(muscle);
+    const iconColor = getEffortColor(effort);
+    const subtitle = getUpcomingSubtitle(dailyPlan);
+    const isSelected = dateStr === selectedDateString;
+    const isToday = dateStr === todayStr;
+
+    const row = (
+      <TouchableOpacity
+        key={dateStr}
+        style={[
+          styles.upcomingRow,
+          idx < scheduleOrder.length - 1 && styles.upcomingRowBorder,
+          isSelected && styles.upcomingRowActive,
+          isActive && styles.upcomingRowDragging,
+        ]}
+        onPress={() => setSelectedDateString(dateStr)}
+        onLongPress={Platform.OS !== 'web' ? drag : undefined}
+        activeOpacity={0.7}
+        delayLongPress={200}
+      >
+        <View style={[styles.upcomingIconCircle, { backgroundColor: iconColor + '22' }]}>
+          <DayIcon size={22} color={iconColor} />
+        </View>
+        <View style={styles.upcomingInfo}>
+          <View style={styles.upcomingInfoRow}>
+            <Text style={styles.upcomingFocus} numberOfLines={1}>
+              {dailyPlan.focus || (dailyPlan.is_rest_day ? 'Rest Day' : 'Workout')}
+            </Text>
+            <Text style={styles.upcomingDay}>· {dayAbbr} {dateNum}</Text>
+            {isSelected && (
+              <View style={styles.upcomingActiveBadge}>
+                <Text style={styles.upcomingActiveBadgeText}>
+                  {isToday ? 'TODAY' : 'ACTIVE'}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.upcomingSubtitle}>{subtitle}</Text>
+        </View>
+        <Ionicons name="reorder-two-outline" size={20} color={isActive ? CHARTREUSE : '#444'} />
+      </TouchableOpacity>
+    );
+
+    if (Platform.OS === 'web') return row;
+    return <ScaleDecorator activeScale={0.97}>{row}</ScaleDecorator>;
+  }, [dateToDayMap, selectedDateString, todayStr, scheduleOrder]);
 
   if (loading) {
     return (
@@ -304,9 +391,7 @@ export const WorkoutPlanScreen = () => {
     );
   }
 
-  const todayStr = new Date().toISOString().split('T')[0];
   const selectedPlan = dateToDayMap[selectedDateString];
-  const upcomingDays = weekDates.filter(d => d !== selectedDateString);
 
   // Derive muscle + effort for selected day
   const selectedMuscle = selectedPlan ? deriveMuscleGroup(selectedPlan) : 'upper_body';
@@ -314,178 +399,170 @@ export const WorkoutPlanScreen = () => {
   const selectedMuscleIcon = getMuscleIcon(selectedMuscle);
   const selectedEffortColor = getEffortColor(selectedEffort);
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
+  const renderListHeader = () => (
+    <View>
+      {/* ── Brand bar ────────────────────────────── */}
+      <View style={styles.brandBar}>
+        <View style={styles.brandLeft}>
+          <View style={styles.avatarCircle}>
+            <Ionicons name="person" size={14} color={CHARTREUSE} />
+          </View>
+          <Text style={styles.brandName}>SparkFit</Text>
+        </View>
+      </View>
+
+      {/* ── Header ──────────────────────────────── */}
+      <View style={styles.header}>
+        <Text style={styles.title}>Workout Plan</Text>
+        <Text style={styles.subtitle}>Your AI-optimized path to peak performance.</Text>
+      </View>
+
+      {/* ── Week Day Strip ───────────────────────── */}
+      <View style={styles.weekStrip}>
+        {weekDates.map((dateStr) => {
+          const dateObj = new Date(dateStr + 'T00:00:00');
+          const dayAbbr = DAY_ABBREVS[dateObj.getDay()];
+          const dateNum = dateObj.getDate();
+          const isSelected = dateStr === selectedDateString;
+          const isToday = dateStr === todayStr;
+
+          return (
+            <TouchableOpacity
+              key={dateStr}
+              onPress={() => setSelectedDateString(dateStr)}
+              style={styles.dayCell}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.dayPill, isSelected && styles.dayPillSelected]}>
+                <Text style={[styles.dayAbbr, isSelected && styles.dayAbbrSelected]}>
+                  {dayAbbr}
+                </Text>
+                <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>
+                  {dateNum}
+                </Text>
+                {isToday && (
+                  <Text style={[styles.todayBadge, isSelected && styles.todayBadgeSelected]}>
+                    TODAY
+                  </Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* ── Workout Card ─────────────────────────── */}
+      {selectedPlan ? (
+        <View style={styles.workoutCard}>
+          <View style={styles.cardMeta}>
+            <View style={[styles.workoutTypeCircle, { backgroundColor: selectedEffortColor + '22' }]}>
+              {React.createElement(selectedMuscleIcon, { size: 18, color: selectedEffortColor })}
+            </View>
+            {!selectedPlan.is_rest_day && (
+              <>
+                <View style={[styles.intensityBadge, { backgroundColor: selectedEffortColor }]}>
+                  <Text style={styles.intensityText}>
+                    {getIntensityLabel(selectedEffort, selectedMuscle)}
+                  </Text>
+                </View>
+                <View style={styles.durationPill}>
+                  <Ionicons name="time-outline" size={13} color={GRAY} />
+                  <Text style={styles.durationText}>
+                    {getEstimatedMins(selectedPlan)}M
+                  </Text>
+                </View>
+              </>
+            )}
+          </View>
+
+          <Text style={styles.focusTitle}>
+            {selectedPlan.focus || (selectedPlan.is_rest_day ? 'Rest Day' : 'Workout')}
+          </Text>
+
+          {selectedPlan.is_rest_day ? (
+            <Text style={styles.restNote}>Active recovery or full rest — your choice.</Text>
+          ) : (
+            selectedPlan.exercises.map((ex, i) => (
+              <View key={i} style={styles.exerciseRow}>
+                <View style={styles.exerciseIconWrap}>
+                  {React.createElement(getExerciseIcon(ex.type, ex.name, ex.movement_pattern ?? ''), { size: 17, color: WHITE })}
+                </View>
+                <View style={styles.exerciseInfo}>
+                  <Text style={styles.exerciseName}>{ex.name}</Text>
+                  <Text style={styles.exerciseDetails}>{getExerciseDetails(ex)}</Text>
+                </View>
+              </View>
+            ))
+          )}
+
+          {!selectedPlan.is_rest_day && planId && (
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => navigation.navigate('ChangeWorkoutChat', { planId })}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="pencil-outline" size={15} color={GRAY} />
+              <Text style={styles.editButtonText}>Edit Workout</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : (
+        <View style={styles.workoutCard}>
+          <Text style={{ color: GRAY }}>No workout scheduled for this day.</Text>
+        </View>
+      )}
+
+      {/* ── Schedule header ───────────────────────── */}
+      <View style={styles.upcomingHeader}>
+        <Text style={styles.upcomingTitle}>Schedule this week</Text>
+        {Platform.OS !== 'web' && (
+          <Text style={styles.upcomingHint}>Hold & drag to reorder</Text>
+        )}
+      </View>
+
+      {Platform.OS !== 'web' && <View style={styles.upcomingListTop} />}
+    </View>
+  );
+
+  if (Platform.OS === 'web') {
+    return (
+      <SafeAreaView style={styles.safeArea}>
         <ScrollView
-          style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* ── Brand bar ────────────────────────────── */}
-          <View style={styles.brandBar}>
-            <View style={styles.brandLeft}>
-              <View style={styles.avatarCircle}>
-                <Ionicons name="person" size={14} color={CHARTREUSE} />
-              </View>
-              <Text style={styles.brandName}>SparkFit</Text>
-            </View>
-            <Ionicons name="notifications-outline" size={22} color={GRAY} />
-          </View>
-
-          {/* ── Header ──────────────────────────────── */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Workout Plan</Text>
-            <Text style={styles.subtitle}>Your AI-optimized path to peak performance.</Text>
-          </View>
-
-          {/* ── Week Day Strip ───────────────────────── */}
-          <View style={styles.weekStrip}>
-            {weekDates.map((dateStr) => {
-              const dateObj = new Date(dateStr + 'T00:00:00');
-              const dayAbbr = DAY_ABBREVS[dateObj.getDay()];
-              const dateNum = dateObj.getDate();
-              const isSelected = dateStr === selectedDateString;
-              const isToday = dateStr === todayStr;
-
-              return (
-                <TouchableOpacity
-                  key={dateStr}
-                  onPress={() => setSelectedDateString(dateStr)}
-                  style={styles.dayCell}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.dayPill, isSelected && styles.dayPillSelected]}>
-                    <Text style={[styles.dayAbbr, isSelected && styles.dayAbbrSelected]}>
-                      {dayAbbr}
-                    </Text>
-                    <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>
-                      {dateNum}
-                    </Text>
-                    {isToday && (
-                      <Text style={[styles.todayBadge, isSelected && styles.todayBadgeSelected]}>
-                        TODAY
-                      </Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* ── Workout Card ─────────────────────────── */}
-          {selectedPlan ? (
-            <View style={styles.workoutCard}>
-              {/* Top row: muscle icon + intensity badge + duration */}
-              <View style={styles.cardMeta}>
-                <View style={[styles.workoutTypeCircle, { backgroundColor: selectedEffortColor + '22' }]}>
-                  {React.createElement(selectedMuscleIcon, { size: 18, color: selectedEffortColor })}
-                </View>
-                {!selectedPlan.is_rest_day && (
-                  <>
-                    <View style={[styles.intensityBadge, { backgroundColor: selectedEffortColor }]}>
-                      <Text style={styles.intensityText}>
-                        {getIntensityLabel(selectedEffort, selectedMuscle)}
-                      </Text>
-                    </View>
-                    <View style={styles.durationPill}>
-                      <Ionicons name="time-outline" size={13} color={GRAY} />
-                      <Text style={styles.durationText}>
-                        {getEstimatedMins(selectedPlan)}M
-                      </Text>
-                    </View>
-                  </>
-                )}
-              </View>
-
-              {/* Focus title */}
-              <Text style={styles.focusTitle}>
-                {selectedPlan.focus || (selectedPlan.is_rest_day ? 'Rest Day' : 'Workout')}
-              </Text>
-
-              {/* Exercise rows */}
-              {selectedPlan.is_rest_day ? (
-                <Text style={styles.restNote}>Active recovery or full rest — your choice.</Text>
-              ) : (
-                selectedPlan.exercises.map((ex, i) => (
-                  <View key={i} style={styles.exerciseRow}>
-                    <View style={styles.exerciseIconWrap}>
-                      {React.createElement(getExerciseIcon(ex.type, ex.name, ex.movement_pattern ?? ''), { size: 17, color: WHITE })}
-                    </View>
-                    <View style={styles.exerciseInfo}>
-                      <Text style={styles.exerciseName}>{ex.name}</Text>
-                      <Text style={styles.exerciseDetails}>{getExerciseDetails(ex)}</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color="#444" />
-                  </View>
-                ))
-              )}
-
-              {/* Edit Workout */}
-              {!selectedPlan.is_rest_day && planId && (
-                <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={() => navigation.navigate('ChangeWorkoutChat', { planId })}
-                  activeOpacity={0.75}
-                >
-                  <Ionicons name="pencil-outline" size={15} color={GRAY} />
-                  <Text style={styles.editButtonText}>Edit Workout</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          ) : (
-            <View style={styles.workoutCard}>
-              <Text style={{ color: GRAY }}>No workout scheduled for this day.</Text>
-            </View>
-          )}
-
-          {/* ── Upcoming Week ─────────────────────────── */}
-          <View style={styles.upcomingHeader}>
-            <Text style={styles.upcomingTitle}>Upcoming Week</Text>
-          </View>
-
+          {renderListHeader()}
           <View style={styles.upcomingList}>
-            {upcomingDays.map((dateStr, idx) => {
-              const dailyPlan = dateToDayMap[dateStr];
-              if (!dailyPlan) return null;
-              const dateObj = new Date(dateStr + 'T00:00:00');
-              const dayAbbr = DAY_ABBREVS[dateObj.getDay()];
-              const dateNum = dateObj.getDate();
-              const muscle = deriveMuscleGroup(dailyPlan);
-              const effort = deriveEffortLevel(dailyPlan);
-              const DayIcon = getMuscleIcon(muscle);
-              const iconColor = getEffortColor(effort);
-              const subtitle = getUpcomingSubtitle(dailyPlan);
-
-              return (
-                <TouchableOpacity
-                  key={dateStr}
-                  style={[
-                    styles.upcomingRow,
-                    idx < upcomingDays.length - 1 && styles.upcomingRowBorder,
-                  ]}
-                  onPress={() => setSelectedDateString(dateStr)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.upcomingIconCircle, { backgroundColor: iconColor + '22' }]}>
-                    <DayIcon size={22} color={iconColor} />
-                  </View>
-                  <View style={styles.upcomingInfo}>
-                    <View style={styles.upcomingInfoRow}>
-                      <Text style={styles.upcomingFocus} numberOfLines={1}>
-                        {dailyPlan.focus || (dailyPlan.is_rest_day ? 'Rest Day' : 'Workout')}
-                      </Text>
-                      <Text style={styles.upcomingDay}>· {dayAbbr} {dateNum}</Text>
-                    </View>
-                    <Text style={styles.upcomingSubtitle}>{subtitle}</Text>
-                  </View>
-                  <Ionicons name="reorder-two-outline" size={20} color="#444" />
-                </TouchableOpacity>
-              );
+            {scheduleOrder.map((item, idx) => {
+              const fakeParams = {
+                item,
+                drag: () => {},
+                isActive: false,
+                getIndex: () => idx,
+              } as any;
+              return renderScheduleItem(fakeParams);
             })}
           </View>
-
           <View style={{ height: 80 }} />
         </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <DraggableFlatList
+        data={scheduleOrder}
+        keyExtractor={(item) => item.key}
+        onDragEnd={({ data }) => handleDragEnd(data)}
+        renderItem={renderScheduleItem}
+        ListHeaderComponent={renderListHeader}
+        ListFooterComponent={<View style={styles.upcomingListBottom} />}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        containerStyle={styles.listContainer}
+        activationDistance={10}
+      />
     </SafeAreaView>
   );
 };
@@ -495,9 +572,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: BG,
-  },
-  scroll: {
-    flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -714,20 +788,42 @@ const styles = StyleSheet.create({
   },
 
   // Upcoming Week
+  listContainer: {
+    flex: 1,
+    backgroundColor: BG,
+  },
   upcomingHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
   upcomingTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: WHITE,
   },
+  upcomingHint: {
+    fontSize: 12,
+    color: GRAY,
+    fontStyle: 'italic',
+  },
   upcomingList: {
     backgroundColor: CARD_BG,
     borderRadius: 20,
     overflow: 'hidden',
+  },
+  upcomingListTop: {
+    backgroundColor: CARD_BG,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    height: 4,
+  },
+  upcomingListBottom: {
+    backgroundColor: CARD_BG,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    height: 80,
   },
   upcomingRow: {
     flexDirection: 'row',
@@ -735,6 +831,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     gap: 12,
+    backgroundColor: CARD_BG,
+  },
+  upcomingRowDragging: {
+    backgroundColor: '#222',
+    shadowColor: CHARTREUSE,
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
   },
   upcomingRowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -771,6 +875,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: GRAY,
     marginTop: 2,
+  },
+  upcomingRowActive: {
+    backgroundColor: 'rgba(207,255,0,0.06)',
+    borderLeftWidth: 3,
+    borderLeftColor: CHARTREUSE,
+    paddingLeft: 13,
+  },
+  upcomingActiveBadge: {
+    backgroundColor: 'rgba(207,255,0,0.15)',
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  upcomingActiveBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: CHARTREUSE,
+    letterSpacing: 0.8,
   },
 
 });
