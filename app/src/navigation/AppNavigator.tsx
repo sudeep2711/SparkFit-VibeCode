@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { supabase } from '../services/supabase';
@@ -7,8 +7,7 @@ import { supabase } from '../services/supabase';
 // Import Types
 import { RootStackParamList, AuthStackParamList, OnboardingStackParamList, MainTabParamList } from '../types/navigation';
 import { CustomTabBar } from './CustomTabBar';
-
-export const navigationRef = createNavigationContainerRef<RootStackParamList>();
+import { navigationRef } from './navigationRef';
 
 // Import Screens
 import { WelcomeScreen } from '../screens/WelcomeScreen';
@@ -68,6 +67,7 @@ const linking = {
         },
       },
       Main: {
+        path: '',
         screens: {
           Dashboard: 'dashboard',
           WorkoutPlan: 'plan',

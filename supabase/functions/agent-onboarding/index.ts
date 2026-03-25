@@ -36,7 +36,65 @@ Deno.serve(async (req) => {
     const { userId, message, context } = (await req.json()) as AgentRequest;
     const supabase = getSupabaseAdmin();
 
-    // Fetch recent chat history for this user's onboarding session
+    // Fast path: client already collected profile data (AIOnboardingChatScreen)
+    if (context?.profileData) {
+      const profileData = context.profileData as Record<string, unknown>;
+      const actions: AgentResponse['actions'] = [];
+
+      const { error: upsertError } = await supabase.from('profiles').upsert({
+        id: userId,
+        goal: profileData.goal,
+        fitness_level: profileData.fitness_level,
+        workout_days_per_week: profileData.workout_days_per_week,
+        equipment: profileData.equipment,
+        onboarding_complete: true,
+        updated_at: new Date().toISOString(),
+      });
+
+      if (upsertError) throw new Error(`Profile save failed: ${upsertError.message}`);
+
+      // Fire-and-forget — don't block plan generation on embedding
+      embedAndStore(
+        userId,
+        `User profile: goal=${profileData.goal}, fitness_level=${profileData.fitness_level}, days_per_week=${profileData.workout_days_per_week}, equipment=${profileData.equipment}`,
+        'profile',
+        profileData,
+      ).catch((e) => console.error('embedAndStore error (non-fatal):', e));
+
+      actions.push({ type: 'save_profile', payload: profileData as Record<string, unknown> });
+
+      const planRes = await fetch(
+        `${Deno.env.get('SUPABASE_URL')}/functions/v1/agent-plan`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          },
+          body: JSON.stringify({
+            userId,
+            message: 'Generate my initial workout plan based on my profile.',
+            context: { trigger: 'onboarding_complete' },
+            action: 'generate_weekly_plan',
+          }),
+        },
+      );
+
+      if (!planRes.ok) {
+        const errText = await planRes.text();
+        throw new Error(`Plan generation failed: ${errText}`);
+      }
+
+      const planData = await planRes.json();
+      if (planData.actions) actions.push(...planData.actions);
+
+      return new Response(
+        JSON.stringify({ response: "Your plan is ready! Let's get to work.", actions, agent: 'onboarding' } as AgentResponse),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    // Conversational path: gather profile via chat
     const { data: history } = await supabase
       .from('chat_history')
       .select('role, content')
@@ -88,31 +146,27 @@ Deno.serve(async (req) => {
         actions.push({ type: 'save_profile', payload: profileData });
 
         // Immediately generate the initial workout plan
-        try {
-          const planRes = await fetch(
-            `${Deno.env.get('SUPABASE_URL')}/functions/v1/agent-plan`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-              },
-              body: JSON.stringify({
-                userId,
-                message: 'Generate my initial workout plan based on my profile.',
-                context: { trigger: 'onboarding_complete' },
-                action: 'generate_weekly_plan',
-              }),
+        const planRes = await fetch(
+          `${Deno.env.get('SUPABASE_URL')}/functions/v1/agent-plan`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
             },
-          );
-          if (planRes.ok) {
-            const planData = await planRes.json();
-            if (planData.actions) actions.push(...planData.actions);
-          } else {
-            console.error('agent-plan call failed:', await planRes.text());
-          }
-        } catch (planErr) {
-          console.error('Plan generation error:', planErr);
+            body: JSON.stringify({
+              userId,
+              message: 'Generate my initial workout plan based on my profile.',
+              context: { trigger: 'onboarding_complete' },
+              action: 'generate_weekly_plan',
+            }),
+          },
+        );
+        if (planRes.ok) {
+          const planData = await planRes.json();
+          if (planData.actions) actions.push(...planData.actions);
+        } else {
+          console.error('agent-plan call failed:', await planRes.text());
         }
       } catch (parseErr) {
         console.error('Profile parse error:', parseErr);

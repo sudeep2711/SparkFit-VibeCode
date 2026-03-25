@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { supabase } from '../services/supabase';
+import { navigationRef } from '../navigation/navigationRef';
 import { MainTabParamList } from '../types/navigation';
 
 type ProfileNavProp = BottomTabNavigationProp<MainTabParamList, 'Profile'>;
@@ -52,6 +53,7 @@ export const ProfileScreen = () => {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [stats, setStats] = useState<StatsData | null>(null);
+  const [showRecreatConfirm, setShowRecreatConfirm] = useState(false);
 
   useEffect(() => {
     fetchAll();
@@ -114,6 +116,8 @@ export const ProfileScreen = () => {
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
+
+  const handleRecreatePlan = () => setShowRecreatConfirm(true);
 
   if (loading) {
     return (
@@ -254,6 +258,14 @@ export const ProfileScreen = () => {
             label="Personal Records"
             subtitle="Coming soon"
           />
+          <View style={styles.menuDivider} />
+          <MenuRow
+            iconBg="#2A1A3A"
+            iconName="refresh-circle"
+            label="Recreate Plan"
+            subtitle="Start onboarding again with new goals"
+            onPress={handleRecreatePlan}
+          />
         </View>
 
         {/* ── Support & System ── */}
@@ -284,6 +296,33 @@ export const ProfileScreen = () => {
         </View>
 
         <Text style={styles.footer}>SPARKFIT V1.0</Text>
+
+        {/* ── Recreate Plan Confirmation ── */}
+        {showRecreatConfirm && (
+          <View style={styles.confirmBanner}>
+            <Text style={styles.confirmTitle}>Recreate your plan?</Text>
+            <Text style={styles.confirmBody}>
+              You'll go through onboarding again and a new workout plan will be generated. Your current plan will be replaced.
+            </Text>
+            <View style={styles.confirmButtons}>
+              <TouchableOpacity
+                style={styles.confirmCancel}
+                onPress={() => setShowRecreatConfirm(false)}
+              >
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmGo}
+                onPress={() => {
+                  setShowRecreatConfirm(false);
+                  navigationRef.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
+                }}
+              >
+                <Text style={styles.confirmGoText}>Yes, recreate</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -607,6 +646,57 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: C.border,
     marginLeft: 70,
+  },
+
+  // ── Recreate confirm banner ──
+  confirmBanner: {
+    backgroundColor: C.surfaceRaised,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.danger,
+    padding: 20,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  confirmTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: C.text,
+    marginBottom: 8,
+  },
+  confirmBody: {
+    fontSize: 13,
+    color: C.textMuted,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  confirmButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  confirmCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    alignItems: 'center',
+  },
+  confirmCancelText: {
+    color: C.textMuted,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  confirmGo: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: C.danger,
+    alignItems: 'center',
+  },
+  confirmGoText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
   },
 
   // ── Footer ──

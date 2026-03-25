@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,11 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  Dumbbell, Footprints, Flame, Activity, Zap,
+  Wind, Layers, Moon, Repeat, Timer, Waves,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 
@@ -27,6 +32,7 @@ const NEON       = '#00F5FF';
 type Exercise = {
   name: string;
   type: 'strength' | 'cardio' | 'interval' | 'calisthenics' | 'isometric';
+  movement_pattern?: string;
   sets?: number;
   reps?: number | string;
   estimated_time_secs?: number;
@@ -82,22 +88,22 @@ function deriveEffortLevel(dailyPlan: DailyPlan): string {
   return 'easy';
 }
 
-function getMuscleIcon(muscleGroup: string): keyof typeof Ionicons.glyphMap {
+function getMuscleIcon(muscleGroup: string): LucideIcon {
   switch (muscleGroup) {
     case 'chest':
-    case 'shoulders':
-    case 'arms':
-    case 'back':
-    case 'upper_body':      return 'barbell';
+    case 'upper_body':      return Dumbbell;
+    case 'back':            return Dumbbell;
+    case 'shoulders':       return Dumbbell;
+    case 'arms':            return Dumbbell;
     case 'legs':
     case 'glutes':
-    case 'lower_body':      return 'footsteps';
-    case 'core':            return 'body';
-    case 'full_body':       return 'person';
-    case 'cardio':          return 'pulse';
-    case 'active_recovery': return 'star';
-    case 'rest':            return 'moon';
-    default:                return 'barbell';
+    case 'lower_body':      return Footprints;
+    case 'core':            return Flame;
+    case 'full_body':       return Layers;
+    case 'cardio':          return Activity;
+    case 'active_recovery': return Wind;
+    case 'rest':            return Moon;
+    default:                return Dumbbell;
   }
 }
 
@@ -111,14 +117,33 @@ function getEffortColor(effortLevel: string): string {
   }
 }
 
-function getIntensityLabel(effortLevel: string): string {
-  switch (effortLevel) {
-    case 'easy':     return 'LIGHT';
-    case 'moderate': return 'MODERATE';
-    case 'hard':     return 'HIGH INTENSITY';
-    case 'rest':     return 'REST DAY';
-    default:         return 'MODERATE';
+function getIntensityLabel(effortLevel: string, muscleGroup: string): string {
+  if (effortLevel === 'rest' || muscleGroup === 'rest') return 'REST DAY';
+  if (muscleGroup === 'active_recovery') return 'RECOVERY';
+
+  if (muscleGroup === 'cardio') {
+    if (effortLevel === 'easy')     return 'LIGHT CARDIO';
+    if (effortLevel === 'hard')     return 'HIGH INTENSITY';
+    return 'CARDIO';
   }
+  if (muscleGroup === 'legs' || muscleGroup === 'glutes' || muscleGroup === 'lower_body') {
+    if (effortLevel === 'easy')     return 'LIGHT LEGS';
+    if (effortLevel === 'hard')     return 'HEAVY LEGS';
+    return 'LEG DAY';
+  }
+  if (muscleGroup === 'core') {
+    if (effortLevel === 'easy')     return 'LIGHT CORE';
+    if (effortLevel === 'hard')     return 'CORE BURN';
+    return 'CORE';
+  }
+  if (muscleGroup === 'full_body') {
+    if (effortLevel === 'easy')     return 'ACTIVE';
+    return 'FULL BODY';
+  }
+  // strength: chest, back, shoulders, arms, upper_body, default
+  if (effortLevel === 'easy')       return 'LIGHT';
+  if (effortLevel === 'hard')       return 'HEAVY LIFT';
+  return 'STRENGTH';
 }
 
 function getEstimatedMins(dailyPlan: DailyPlan): number {
@@ -129,15 +154,44 @@ function getEstimatedMins(dailyPlan: DailyPlan): number {
   return Math.min(Math.round(total / 60), 99);
 }
 
-function getExerciseIcon(type: Exercise['type']): keyof typeof Ionicons.glyphMap {
-  switch (type) {
-    case 'strength':
-    case 'calisthenics': return 'barbell';
-    case 'cardio':       return 'footsteps';
-    case 'interval':     return 'timer';
-    case 'isometric':    return 'pause-circle';
-    default:             return 'body';
+function getExerciseIcon(type: Exercise['type'], name: string = '', pattern: string = ''): LucideIcon {
+  // Primary: use Gemini-assigned movement pattern
+  switch (pattern) {
+    case 'press_horizontal':  return Dumbbell;
+    case 'press_vertical':    return Flame;
+    case 'fly_crossover':     return Layers;
+    case 'row':               return Dumbbell;
+    case 'pulldown_pullup':   return Dumbbell;
+    case 'curl':              return Dumbbell;
+    case 'extension':         return Dumbbell;
+    case 'squat_lunge':       return Footprints;
+    case 'hinge_deadlift':    return Dumbbell;
+    case 'raise':             return Dumbbell;
+    case 'carry':             return Footprints;
+    case 'plank_hold':        return Wind;
+    case 'run_sprint':        return Zap;
+    case 'jump_plyometric':   return Zap;
+    case 'rotation_twist':    return Waves;
   }
+  // Fallback for existing plans without movement_pattern
+  if (type === 'interval')     return Repeat;
+  if (type === 'isometric')    return Timer;
+  if (type === 'calisthenics') return Layers;
+  if (type === 'cardio')       return Activity;
+  const n = name.toLowerCase();
+  if (/bench|chest|fly|flye|pec|push.?up|dip/.test(n))                               return Dumbbell;
+  if (/row|pull.?down|lat|pull.?up|chin.?up|back|rear|rhomboid/.test(n))              return Dumbbell;
+  if (/shoulder|military|overhead|lateral raise|front raise/.test(n))                 return Dumbbell;
+  if (/curl|bicep|hammer curl|preacher/.test(n))                                      return Dumbbell;
+  if (/tricep|skull|extension|pushdown/.test(n))                                      return Dumbbell;
+  if (/squat|lunge|leg press|step.?up|calf/.test(n))                                  return Footprints;
+  if (/deadlift|rdl|hip thrust|hinge|good morning/.test(n))                           return Dumbbell;
+  if (/plank|hollow|dead bug|wall sit|hold/.test(n))                                  return Wind;
+  if (/crunch|sit.?up|ab|core|oblique/.test(n))                                       return Flame;
+  if (/run|sprint|jog|treadmill/.test(n))                                             return Zap;
+  if (/jump|burpee|plyometric|box/.test(n))                                           return Zap;
+  if (/twist|rotation|woodchop|russian/.test(n))                                      return Waves;
+  return Dumbbell;
 }
 
 function getExerciseDetails(ex: Exercise): string {
@@ -167,8 +221,6 @@ export const WorkoutPlanScreen = () => {
   const [weekDates, setWeekDates] = useState<string[]>([]);
   const [selectedDateString, setSelectedDateString] = useState<string>('');
 
-  const weekScrollRef = useRef<ScrollView>(null);
-
   useEffect(() => {
     fetchPlan();
   }, []);
@@ -197,7 +249,12 @@ export const WorkoutPlanScreen = () => {
         setPlan({ week_plan: weekPlan });
         setPlanId(data.id);
 
-        const startDate = new Date(data.created_at);
+        const now = new Date();
+        const dayOfWeek = now.getDay();
+        const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        const startDate = new Date(now);
+        startDate.setDate(now.getDate() - daysFromMonday);
+        startDate.setHours(0, 0, 0, 0);
         const newDateMap: Record<string, DailyPlan> = {};
         const dates: string[] = [];
 
@@ -258,8 +315,7 @@ export const WorkoutPlanScreen = () => {
   const selectedEffortColor = getEffortColor(selectedEffort);
 
   return (
-    <View style={{ flex: 1 }}>
-      <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea}>
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
@@ -283,13 +339,7 @@ export const WorkoutPlanScreen = () => {
           </View>
 
           {/* ── Week Day Strip ───────────────────────── */}
-          <ScrollView
-            ref={weekScrollRef}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.weekStrip}
-            nestedScrollEnabled
-          >
+          <View style={styles.weekStrip}>
             {weekDates.map((dateStr) => {
               const dateObj = new Date(dateStr + 'T00:00:00');
               const dayAbbr = DAY_ABBREVS[dateObj.getDay()];
@@ -316,14 +366,11 @@ export const WorkoutPlanScreen = () => {
                         TODAY
                       </Text>
                     )}
-                    {isSelected && !isToday && (
-                      <View style={styles.dotSelected} />
-                    )}
                   </View>
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+          </View>
 
           {/* ── Workout Card ─────────────────────────── */}
           {selectedPlan ? (
@@ -331,13 +378,13 @@ export const WorkoutPlanScreen = () => {
               {/* Top row: muscle icon + intensity badge + duration */}
               <View style={styles.cardMeta}>
                 <View style={[styles.workoutTypeCircle, { backgroundColor: selectedEffortColor + '22' }]}>
-                  <Ionicons name={selectedMuscleIcon} size={18} color={selectedEffortColor} />
+                  {React.createElement(selectedMuscleIcon, { size: 18, color: selectedEffortColor })}
                 </View>
                 {!selectedPlan.is_rest_day && (
                   <>
                     <View style={[styles.intensityBadge, { backgroundColor: selectedEffortColor }]}>
                       <Text style={styles.intensityText}>
-                        {getIntensityLabel(selectedEffort)}
+                        {getIntensityLabel(selectedEffort, selectedMuscle)}
                       </Text>
                     </View>
                     <View style={styles.durationPill}>
@@ -362,7 +409,7 @@ export const WorkoutPlanScreen = () => {
                 selectedPlan.exercises.map((ex, i) => (
                   <View key={i} style={styles.exerciseRow}>
                     <View style={styles.exerciseIconWrap}>
-                      <Ionicons name={getExerciseIcon(ex.type)} size={17} color={WHITE} />
+                      {React.createElement(getExerciseIcon(ex.type, ex.name, ex.movement_pattern ?? ''), { size: 17, color: WHITE })}
                     </View>
                     <View style={styles.exerciseInfo}>
                       <Text style={styles.exerciseName}>{ex.name}</Text>
@@ -394,7 +441,6 @@ export const WorkoutPlanScreen = () => {
           {/* ── Upcoming Week ─────────────────────────── */}
           <View style={styles.upcomingHeader}>
             <Text style={styles.upcomingTitle}>Upcoming Week</Text>
-            <Text style={styles.addDay}>+ ADD DAY</Text>
           </View>
 
           <View style={styles.upcomingList}>
@@ -406,7 +452,7 @@ export const WorkoutPlanScreen = () => {
               const dateNum = dateObj.getDate();
               const muscle = deriveMuscleGroup(dailyPlan);
               const effort = deriveEffortLevel(dailyPlan);
-              const iconName = getMuscleIcon(muscle);
+              const DayIcon = getMuscleIcon(muscle);
               const iconColor = getEffortColor(effort);
               const subtitle = getUpcomingSubtitle(dailyPlan);
 
@@ -421,7 +467,7 @@ export const WorkoutPlanScreen = () => {
                   activeOpacity={0.7}
                 >
                   <View style={[styles.upcomingIconCircle, { backgroundColor: iconColor + '22' }]}>
-                    <Ionicons name={iconName} size={22} color={iconColor} />
+                    <DayIcon size={22} color={iconColor} />
                   </View>
                   <View style={styles.upcomingInfo}>
                     <View style={styles.upcomingInfoRow}>
@@ -440,17 +486,7 @@ export const WorkoutPlanScreen = () => {
 
           <View style={{ height: 80 }} />
         </ScrollView>
-      </SafeAreaView>
-
-      {/* ── Floating AI Coach FAB ─────────────────── */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => navigation.navigate('AICoach')}
-        activeOpacity={0.85}
-      >
-        <Ionicons name="hardware-chip-outline" size={24} color="#111" />
-      </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -519,6 +555,8 @@ const styles = StyleSheet.create({
 
   // Week strip
   weekStrip: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     paddingBottom: 24,
     gap: 8,
   },
@@ -679,18 +717,12 @@ const styles = StyleSheet.create({
   upcomingHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     marginBottom: 16,
   },
   upcomingTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: WHITE,
-  },
-  addDay: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: CHARTREUSE,
   },
   upcomingList: {
     backgroundColor: CARD_BG,
@@ -741,21 +773,4 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // FAB
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: NEON,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: NEON,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 8,
-  },
 });
