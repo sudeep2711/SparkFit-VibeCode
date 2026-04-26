@@ -341,11 +341,14 @@ export const WorkoutActiveScreen = () => {
 
       <View style={styles.rightHeaderControls}>
         <Text style={styles.totalTimerText}>{formatTime(totalWorkoutTime)}</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('MidWorkoutChat', {
-          exerciseName: currentExercise.name,
-          currentSet: currentSet,
-          targetSets: currentExercise.sets || 1,
-          coachTip: currentExercise?.coach_tip
+        <TouchableOpacity onPress={() => navigation.navigate('SparkAIChat', {
+          context: {
+            screen: 'mid_workout',
+            exerciseName: currentExercise.name,
+            currentSet: currentSet,
+            targetSets: currentExercise.sets || 1,
+            coachTip: currentExercise?.coach_tip,
+          }
         })} style={styles.iconButton}>
           <Ionicons name="chatbubble-ellipses" size={26} color="#007AFF" />
         </TouchableOpacity>

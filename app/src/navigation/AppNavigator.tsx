@@ -15,12 +15,11 @@ import { AIOnboardingChatScreen } from '../screens/AIOnboardingChatScreen';
 import { DashboardScreen } from '../screens/DashboardScreen';
 import { WorkoutPlanScreen } from '../screens/WorkoutPlanScreen';
 import { ProgressScreen } from '../screens/ProgressScreen';
-import { AICoachScreen } from '../screens/AICoachScreen';
+import { SparkAIScreen } from '../screens/SparkAIScreen';
+import { SparkAIChatModal } from '../screens/SparkAIChatModal';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { WorkoutActiveScreen } from '../screens/WorkoutActiveScreen';
 import { WorkoutSummaryScreen } from '../screens/WorkoutSummaryScreen';
-import { MidWorkoutChatScreen } from '../screens/MidWorkoutChatScreen';
-import { ChangeWorkoutChatScreen } from '../screens/ChangeWorkoutChatScreen';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -47,7 +46,7 @@ const MainTabNavigator = () => (
     <MainTab.Screen name="Dashboard" component={DashboardScreen} />
     <MainTab.Screen name="WorkoutPlan" component={WorkoutPlanScreen} />
     <MainTab.Screen name="Progress" component={ProgressScreen} />
-    <MainTab.Screen name="AICoach" component={AICoachScreen} />
+    <MainTab.Screen name="AICoach" component={SparkAIScreen} />
     <MainTab.Screen name="Profile" component={ProfileScreen} />
   </MainTab.Navigator>
 );
@@ -78,7 +77,7 @@ const linking = {
       },
       WorkoutActive: 'workout-active',
       WorkoutSummary: 'workout-summary',
-      MidWorkoutChat: 'mid-workout-chat',
+      SparkAIChat: 'spark-ai-chat',
     },
   },
 };
@@ -112,13 +111,8 @@ export const AppNavigator = () => {
           options={{ gestureEnabled: false }}
         />
         <RootStack.Screen
-          name="MidWorkoutChat"
-          component={MidWorkoutChatScreen}
-          options={{ presentation: 'modal' }}
-        />
-        <RootStack.Screen
-          name="ChangeWorkoutChat"
-          component={ChangeWorkoutChatScreen}
+          name="SparkAIChat"
+          component={SparkAIChatModal}
           options={{ presentation: 'modal' }}
         />
       </RootStack.Navigator>

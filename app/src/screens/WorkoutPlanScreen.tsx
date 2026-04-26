@@ -498,7 +498,7 @@ export const WorkoutPlanScreen = () => {
           {!selectedPlan.is_rest_day && planId && (
             <TouchableOpacity
               style={styles.editButton}
-              onPress={() => navigation.navigate('ChangeWorkoutChat', { planId })}
+              onPress={() => navigation.navigate('SparkAIChat', { context: { screen: 'change_workout', planId } })}
               activeOpacity={0.75}
             >
               <Ionicons name="pencil-outline" size={15} color={GRAY} />

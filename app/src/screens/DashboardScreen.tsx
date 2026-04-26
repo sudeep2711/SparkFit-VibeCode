@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, SafeAreaView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, SafeAreaView, TouchableOpacity } from 'react-native';
 import { supabase } from '../services/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -8,6 +8,20 @@ import { RootStackParamList } from '../types/navigation';
 
 type DailyLogNavigationProp = NativeStackNavigationProp<RootStackParamList & { WorkoutPlan: undefined }, 'Main'>;
 
+// ── Theme (matches WorkoutPlanScreen) ───────────────────────────
+const BG         = '#0D0D0D';
+const CARD_BG    = '#1A1A1A';
+const ROW_BG     = '#242424';
+const CHARTREUSE = '#CFFF00';
+const WHITE      = '#FFFFFF';
+const GRAY       = '#888888';
+const BORDER     = '#2A2A2A';
+const NEON       = '#00F5FF';
+const GREEN      = '#34C759';
+const STREAK_ORANGE = '#FF9500';
+const ACCENT     = '#2E7BFF';  // Electric Blue for buttons
+
+// ── Types ───────────────────────────────────────────────────────
 type Exercise = {
   name: string;
   type: 'strength' | 'cardio' | 'interval' | 'calisthenics' | 'isometric';
@@ -29,38 +43,81 @@ type DailyPlan = {
   focus: string;
   is_rest_day?: boolean;
   estimated_total_time_mins?: number;
+  primary_muscle_group?: string;
+  effort_level?: string;
   exercises: Exercise[];
 };
 
+// ── Helpers ─────────────────────────────────────────────────────
+function deriveEffortLevel(dailyPlan: DailyPlan): string {
+  if (dailyPlan.is_rest_day) return 'rest';
+  if (dailyPlan.effort_level) return dailyPlan.effort_level;
+  const n = dailyPlan.exercises.length;
+  if (n >= 6) return 'hard';
+  if (n >= 3) return 'moderate';
+  return 'easy';
+}
+
+function getIntensityLabel(effortLevel: string): string {
+  const effortMap: Record<string, string> = {
+    hard: 'HIGH INTENSITY',
+    moderate: 'MODERATE',
+    easy: 'LIGHT SESSION',
+    rest: 'REST DAY',
+  };
+  return effortMap[effortLevel] || 'WORKOUT';
+}
+
+function getEffortColor(effortLevel: string): string {
+  switch (effortLevel) {
+    case 'easy':     return GREEN;
+    case 'moderate': return STREAK_ORANGE;
+    case 'hard':     return '#FF3B30';
+    case 'rest':     return GRAY;
+    default:         return STREAK_ORANGE;
+  }
+}
+
+function getExerciseSummary(ex: Exercise): string {
+  if (ex.sets && ex.reps) return `${ex.sets} Sets of ${ex.name}`;
+  if (ex.reps) return `${ex.name} (${ex.reps} Reps)`;
+  if (ex.hold_time_secs) return `${ex.name} (${ex.hold_time_secs}s Hold)`;
+  if (ex.duration_secs) return `${ex.name} (${Math.round(ex.duration_secs / 60)}m)`;
+  if (ex.rounds) return `${ex.name} (${ex.rounds} Rounds)`;
+  return ex.name;
+}
+
+function getFormattedDate(): string {
+  return new Date().toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric',
+  });
+}
+
+// Placeholder weekly calories burnt (will be replaced with real data later)
+const PLACEHOLDER_CALORIES = [320, 480, 250, 550, 410, 180, 0];
+const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const MAX_BAR_HEIGHT = 90;
+
+// ── Screen ──────────────────────────────────────────────────────
 export const DashboardScreen = () => {
   const navigation = useNavigation<DailyLogNavigationProp>();
   const [loading, setLoading] = useState(true);
   const [todayPlan, setTodayPlan] = useState<DailyPlan | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  // Streak
+  const [displayName, setDisplayName] = useState<string>('');
   const [currentStreak, setCurrentStreak] = useState(0);
-
-  // Track if a workout was completed today
   const [isCompletedToday, setIsCompletedToday] = useState(false);
   const [isPartialToday, setIsPartialToday] = useState(false);
   const [completedExerciseNames, setCompletedExerciseNames] = useState<string[]>([]);
-
-  // Time tracking stats
   const [actualWorkoutMins, setActualWorkoutMins] = useState(0);
   const [actualRestMins, setActualRestMins] = useState(0);
 
-  // Use focus effect or simple interval/refresh mechanism if needed, 
-  // but for now fetchPlan on mount is fine (could add pull-to-refresh later)
   useEffect(() => {
     fetchPlan();
-
-    // Listen for focus to re-fetch in case they just finished a workout
     const unsubscribe = navigation.addListener('focus', () => {
       fetchPlan();
     });
-
     return unsubscribe;
   }, [navigation]);
 
@@ -74,6 +131,9 @@ export const DashboardScreen = () => {
         return;
       }
 
+      const prefix = (user.email ?? '').split('@')[0];
+      setDisplayName(prefix.charAt(0).toUpperCase() + prefix.slice(1));
+
       const { data: planData, error: planError } = await supabase
         .from('workout_plans')
         .select('id, plan_data')
@@ -86,7 +146,6 @@ export const DashboardScreen = () => {
         throw planError;
       }
 
-      // Normalise plan_data — handle both flat array and legacy { week_plan: [...] } format
       const rawPlan = planData?.plan_data;
       const weekPlan: DailyPlan[] = Array.isArray(rawPlan)
         ? rawPlan
@@ -94,7 +153,6 @@ export const DashboardScreen = () => {
           ? rawPlan.week_plan
           : [];
 
-      // Fetch streak (non-blocking)
       supabase
         .from('streaks')
         .select('current_streak')
@@ -106,14 +164,10 @@ export const DashboardScreen = () => {
 
       if (planData && weekPlan.length > 0) {
         setPlanId(planData.id);
-
-        // Find today's plan by day name (handles "Monday") or fall back to first active day
         const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
         const byName = weekPlan.find((d: DailyPlan) => d.day.toLowerCase() === todayName.toLowerCase());
         const today = byName ?? weekPlan.find((d: DailyPlan) => !d.is_rest_day) ?? weekPlan[0];
         setTodayPlan(today);
-
-        // Check for today's logs
         await checkTodayLogs(user.id, planData.id);
       }
     } catch (err: any) {
@@ -126,7 +180,6 @@ export const DashboardScreen = () => {
 
   const checkTodayLogs = async (userId: string, currentPlanId: string) => {
     const today = new Date().toISOString().split('T')[0];
-
     const { data, error } = await supabase
       .from('workout_logs')
       .select('id, logged_data')
@@ -147,26 +200,15 @@ export const DashboardScreen = () => {
       }
       if (data.logged_data.session_logs) {
         setCompletedExerciseNames(data.logged_data.session_logs.map((log: any) => log.name));
-
-        // Calculate actual times from session logs
         let totalWorkoutSecs = 0;
-        let totalSetsCount = 0;
-
         data.logged_data.session_logs.forEach((exerciseLog: any) => {
           exerciseLog.setsLogs.forEach((setLog: any) => {
             totalWorkoutSecs += (setLog.duration || 0);
-            totalSetsCount++;
           });
         });
-
         setActualWorkoutMins(Math.round(totalWorkoutSecs / 60));
-        // Calculate actual rest based on exact duration_mins minus workout_mins
-        // Or approx: total Sets * 90s, but exact is better if total duration is accurate
         const totalDurationMins = data.logged_data.duration_mins || 0;
-        const calcRestMins = Math.max(0, totalDurationMins - Math.round(totalWorkoutSecs / 60));
-
-        setActualRestMins(calcRestMins);
-
+        setActualRestMins(Math.max(0, totalDurationMins - Math.round(totalWorkoutSecs / 60)));
       } else {
         setCompletedExerciseNames([]);
         setActualWorkoutMins(0);
@@ -183,431 +225,486 @@ export const DashboardScreen = () => {
 
   const handleStartWorkout = () => {
     if (planId && todayPlan) {
-      navigation.navigate('WorkoutActive', {
-        planId: planId,
-        dailyPlan: todayPlan
-      });
+      navigation.navigate('WorkoutActive', { planId, dailyPlan: todayPlan });
     }
   };
 
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color={CHARTREUSE} />
       </View>
     );
   }
 
+  const effort = todayPlan ? deriveEffortLevel(todayPlan) : 'moderate';
+  const intensityLabel = getIntensityLabel(effort);
+  const effortColor = getEffortColor(effort);
+  const formattedDate = getFormattedDate();
+  const maxCount = Math.max(...PLACEHOLDER_CALORIES, 1);
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>Today's Workout</Text>
-          {currentStreak > 0 && (
-            <View style={styles.streakBadge}>
-              <Text style={styles.streakEmoji}>🔥</Text>
-              <Text style={styles.streakText}>{currentStreak}</Text>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Brand Bar ────────────────────────────── */}
+        <View style={styles.brandBar}>
+          <View style={styles.brandLeft}>
+            <View style={styles.avatarCircle}>
+              <Ionicons name="person" size={14} color={CHARTREUSE} />
             </View>
-          )}
+            <Text style={styles.brandName}>SparkFit</Text>
+          </View>
+          <TouchableOpacity>
+            <Ionicons name="notifications-outline" size={22} color={GRAY} />
+          </TouchableOpacity>
+        </View>
+
+        {/* ── Greeting ─────────────────────────────── */}
+        <View style={styles.greetingSection}>
+          <Text style={styles.greetingText}>
+            Fuel your fire, {displayName}.
+          </Text>
+          <Text style={styles.greetingSubtext}>
+            {formattedDate}{currentStreak > 0 ? ` \u2022 Day ${currentStreak} of your streak` : ''}
+          </Text>
         </View>
 
         {error ? (
           <Text style={styles.errorText}>Error: {error}</Text>
         ) : todayPlan ? (
-          <View style={styles.planContainer}>
-
-            {/* Time Tracking Grid */}
-            {(() => {
-              let sumActiveSecs = 0;
-              let sumRestSecs = 0;
-
-              todayPlan.exercises.forEach(ex => {
-                const sets = ex.sets || 1;
-                sumActiveSecs += (ex.estimated_time_secs ?? Math.round(sets * 45));
-                sumRestSecs += (ex.estimated_rest_time_secs ?? Math.round((sets > 1 ? sets - 1 : 0) * 90));
-              });
-
-              const estWorkoutMins = Math.round(sumActiveSecs / 60);
-              const estRestMins = Math.round(sumRestSecs / 60);
-
-              const showActual = isCompletedToday || isPartialToday;
-
-              return (
-                <View style={styles.metricsGrid}>
-                  <View style={styles.metricColumn}>
-                    <Text style={styles.metricColumnHeader}>Estimated</Text>
-                    <View style={styles.metricBox}>
-                      <Text style={styles.metricValue}>{estWorkoutMins}m</Text>
-                      <Text style={styles.metricLabel}>Workout</Text>
-                    </View>
-                    <View style={styles.metricBox}>
-                      <Text style={styles.metricValue}>{estRestMins}m</Text>
-                      <Text style={styles.metricLabel}>Rest</Text>
-                    </View>
-                  </View>
-                  <View style={styles.metricDivider} />
-                  <View style={styles.metricColumn}>
-                    <Text style={styles.metricColumnHeader}>Actual</Text>
-                    <View style={styles.metricBox}>
-                      <Text style={[styles.metricValue, showActual ? styles.metricValueActive : styles.metricValueInactive]}>
-                        {showActual ? `${actualWorkoutMins}m` : '--'}
-                      </Text>
-                      <Text style={styles.metricLabel}>Workout</Text>
-                    </View>
-                    <View style={styles.metricBox}>
-                      <Text style={[styles.metricValue, showActual ? styles.metricValueActive : styles.metricValueInactive]}>
-                        {showActual ? `${actualRestMins}m` : '--'}
-                      </Text>
-                      <Text style={styles.metricLabel}>Rest</Text>
-                    </View>
-                  </View>
+          <>
+            {/* ── Workout Card ─────────────────────── */}
+            <View style={styles.workoutCard}>
+              {/* Tags */}
+              <View style={styles.tagsRow}>
+                <View style={[styles.intensityBadge, { backgroundColor: effortColor }]}>
+                  <Text style={styles.intensityBadgeText}>{intensityLabel}</Text>
                 </View>
-              );
-            })()}
-
-            {/* AI Coach Insight Card */}
-            <View style={[styles.insightCard, isCompletedToday ? styles.insightCardCompleted : (isPartialToday ? styles.insightCardPartial : null)]}>
-              <View style={styles.insightHeader}>
-                <Ionicons name="sparkles" size={20} color={isCompletedToday ? "#34C759" : "#FF9500"} style={{ marginRight: 8 }} />
-                <Text style={[styles.insightTitle, isCompletedToday ? styles.insightTitleCompleted : (isPartialToday ? styles.insightTitlePartial : null)]}>
-                  {isCompletedToday ? "Workout Complete!" : (isPartialToday ? "Partial Workout" : "Coach Insight")}
-                </Text>
+                <Text style={styles.focusTag}>{todayPlan.focus}</Text>
               </View>
-              <Text style={styles.insightText}>
-                {isCompletedToday
-                  ? "Great job crushing your workout today! Rest up, hydrate, and prepare for tomorrow."
-                  : isPartialToday
-                    ? "Looks like you ended your workout early. You can restart or rest. Consistency is key!"
-                    : `Today we focus on ${todayPlan.focus}. Keep your reps controlled and aim for full range of motion. You got this!`}
-              </Text>
-            </View>
 
-            <View style={styles.subTitleRow}>
-              <Text style={styles.subTitle}>Exercises</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('WorkoutPlan')}
-                  style={styles.viewPlanButton}
-                >
-                  <Text style={styles.viewPlanText}>View 7-Day Plan →</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('ChangeWorkoutChat', { planId: planId || '' })}
-                  style={styles.changeWorkoutButton}
-                >
-                  <Ionicons name="refresh-circle" size={18} color="#007AFF" />
-                  <Text style={styles.changeWorkoutText}>New Workout</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+              {/* Title */}
+              <Text style={styles.cardLabel}>Today's workout:</Text>
+              <Text style={styles.cardTitle}>{todayPlan.focus}</Text>
 
-            <FlatList
-              data={todayPlan.exercises}
-              showsVerticalScrollIndicator={false}
-              keyExtractor={(item, index) => index.toString()}
-              renderItem={({ item, index }) => {
-                const isExCompleted = isCompletedToday || completedExerciseNames.includes(item.name);
+              {/* Exercise Checklist */}
+              {todayPlan.exercises.map((ex, i) => {
+                const isExCompleted = isCompletedToday || completedExerciseNames.includes(ex.name);
                 return (
-                  <View style={[styles.exerciseCard, isExCompleted && styles.exerciseCardCompletedStyle]}>
-                    <View style={styles.exerciseIndexBadge}>
-                      {isExCompleted ? (
-                        <Ionicons name="checkmark" size={20} color="#34C759" />
-                      ) : (
-                        <Text style={styles.exerciseIndexText}>{index + 1}</Text>
-                      )}
+                  <View
+                    key={i}
+                    style={[
+                      styles.checklistRow,
+                      i < todayPlan.exercises.length - 1 && styles.checklistRowBorder,
+                    ]}
+                  >
+                    <View style={isExCompleted ? styles.checkCircleComplete : styles.checkCircleIncomplete}>
+                      {isExCompleted && <Ionicons name="checkmark" size={14} color={BG} />}
                     </View>
-                    <View style={styles.exerciseContent}>
-                      <Text style={[styles.exerciseName, isExCompleted && styles.exerciseNameCompleted]}>{item.name}</Text>
-                      <Text style={styles.exerciseDetails}>
-                        Target: {item.sets ? `${item.sets} sets x ` : ''}{item.reps ? `${item.reps} reps` : ''} {item.duration_secs ? `${Math.round(item.duration_secs / 60)}m` : ''} {item.rounds ? `${item.rounds} rounds` : ''}
-                      </Text>
-                      <Text style={styles.exerciseTimeDetails}>
-                        Est. Time: {Math.round((item.estimated_time_secs ?? ((item.sets || 1) * 45)) / 60)}m | Rest: {Math.round((item.estimated_rest_time_secs ?? (((item.sets || 1) > 1 ? (item.sets || 1) - 1 : 0) * 90)) / 60)}m
-                      </Text>
-                    </View>
+                    <Text style={isExCompleted ? styles.checkTextComplete : styles.checkTextIncomplete}>
+                      {getExerciseSummary(ex)}
+                    </Text>
                   </View>
                 );
-              }}
-              contentContainerStyle={{ paddingBottom: 100 }}
-            />
+              })}
 
-            {todayPlan.exercises && todayPlan.exercises.length > 0 && (
-              <View style={styles.stickyFooter} pointerEvents="box-none">
+              {/* Start Workout Button */}
+              {todayPlan.exercises.length > 0 && (
                 <TouchableOpacity
                   style={styles.startButton}
                   onPress={handleStartWorkout}
                   activeOpacity={0.8}
                 >
                   <Text style={styles.startButtonText}>
-                    {isCompletedToday ? "Restart Workout" : (isPartialToday ? "Restart Workout" : "Start Workout")}
+                    {isCompletedToday || isPartialToday ? 'Restart Workout' : 'Start Workout'}
                   </Text>
                   <Ionicons
-                    name={isCompletedToday || isPartialToday ? "refresh" : "arrow-forward"}
-                    size={24} color="#fff" style={{ marginLeft: 8 }}
+                    name={isCompletedToday || isPartialToday ? 'refresh' : 'play'}
+                    size={18}
+                    color={BG}
+                    style={{ marginLeft: 8 }}
                   />
                 </TouchableOpacity>
+              )}
+            </View>
+
+            {/* ── AI Insight ───────────────────────── */}
+            <View style={styles.insightCard}>
+              <View style={styles.insightHeader}>
+                <Ionicons name="sparkles" size={18} color={NEON} />
+                <Text style={styles.insightTitle}>AI Insight</Text>
               </View>
-            )}
-          </View>
+              <Text style={styles.insightQuote}>
+                {isCompletedToday
+                  ? '"Great job crushing your workout today! Rest up, hydrate, and prepare for tomorrow."'
+                  : isPartialToday
+                    ? '"Looks like you ended your workout early. You can restart or rest. Consistency is key!"'
+                    : `"Today we focus on ${todayPlan.focus}. Keep your reps controlled and aim for full range of motion. You got this!"`}
+              </Text>
+              <TouchableOpacity
+                onPress={() => (navigation as any).navigate('AICoach')}
+              >
+                <Text style={styles.insightLink}>VIEW FULL ANALYSIS →</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* ── Activity Streak ──────────────────── */}
+            <View style={styles.streakSection}>
+              <View style={styles.streakHeader}>
+                <Text style={styles.sectionTitle}>Activity Streak</Text>
+                <View style={styles.streakBadge}>
+                  <Ionicons name="flame" size={18} color={STREAK_ORANGE} />
+                  <Text style={styles.streakCount}>{currentStreak} days</Text>
+                </View>
+              </View>
+
+              <View style={styles.chartCard}>
+                {/* Chart header with metric label */}
+                <View style={styles.chartHeader}>
+                  <Text style={styles.chartMetricLabel}>Calories Burnt</Text>
+                  <Text style={styles.chartMetricNote}>This week</Text>
+                </View>
+
+                {/* Bars */}
+                <View style={styles.barsContainer}>
+                  {DAY_LABELS.map((label, i) => {
+                    const count = PLACEHOLDER_CALORIES[i];
+                    const barHeight = count > 0 ? Math.max((count / maxCount) * MAX_BAR_HEIGHT, 8) : 4;
+                    const isToday = i === (new Date().getDay() + 6) % 7; // Mon=0
+                    return (
+                      <View key={i} style={styles.barColumn}>
+                        <Text style={styles.barValue}>{count > 0 ? count : ''}</Text>
+                        <View
+                          style={[
+                            styles.bar,
+                            {
+                              height: barHeight,
+                              backgroundColor: count > 0
+                                ? (isToday ? CHARTREUSE : 'rgba(207,255,0,0.5)')
+                                : ROW_BG,
+                            },
+                          ]}
+                        />
+                        <Text style={[styles.barLabel, isToday && styles.barLabelToday]}>
+                          {label}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            </View>
+          </>
         ) : (
-          <Text style={styles.subtitle}>No active plan yet. Go to Onboarding to create one.</Text>
+          <View style={styles.emptyState}>
+            <Ionicons name="barbell-outline" size={48} color={GRAY} />
+            <Text style={styles.emptyText}>No active plan yet.</Text>
+            <Text style={styles.emptySubtext}>Complete onboarding to generate your workout plan.</Text>
+          </View>
         )}
-      </View>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
+// ── Styles ──────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: BG,
   },
-  container: {
-    flex: 1,
+  scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 20,
-    backgroundColor: '#fff',
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-  },
-  streakBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF4E5',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: '#FFD59E',
-  },
-  streakEmoji: {
-    fontSize: 18,
-    marginRight: 4,
-  },
-  streakText: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#E65100',
-  },
-  subTitleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 10,
-  },
-  subTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  viewPlanButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
-  viewPlanText: {
-    color: '#007AFF',
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  changeWorkoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#E5F1FF',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-  },
-  changeWorkoutText: {
-    color: '#007AFF',
-    fontWeight: '600',
-    fontSize: 14,
-    marginLeft: 4,
+    backgroundColor: BG,
   },
 
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 10,
-  },
-  metricsGrid: {
+  // Brand bar
+  brandBar: {
     flexDirection: 'row',
-    backgroundColor: '#F9F9F9',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#EEE',
-    justifyContent: 'space-around',
-  },
-  metricColumn: {
-    flex: 1,
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 16,
+    paddingBottom: 8,
   },
-  metricColumnHeader: {
+  brandLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  avatarCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: ROW_BG,
+    borderWidth: 1,
+    borderColor: CHARTREUSE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandName: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: WHITE,
+    letterSpacing: 0.3,
+  },
+
+  // Greeting
+  greetingSection: {
+    paddingTop: 12,
+    paddingBottom: 24,
+  },
+  greetingText: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: WHITE,
+    lineHeight: 34,
+  },
+  greetingSubtext: {
     fontSize: 14,
+    color: GRAY,
+    marginTop: 6,
+  },
+
+  // Workout Card
+  workoutCard: {
+    backgroundColor: CARD_BG,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  tagsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 14,
+  },
+  intensityBadge: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  intensityBadgeText: {
+    fontSize: 11,
     fontWeight: '700',
-    color: '#8E8E93',
-    marginBottom: 12,
+    color: WHITE,
     letterSpacing: 0.5,
   },
-  metricDivider: {
-    width: 1,
-    backgroundColor: '#E5E5EA',
-    marginHorizontal: 16,
+  focusTag: {
+    fontSize: 13,
+    color: GRAY,
   },
-  metricBox: {
-    alignItems: 'center',
-    marginBottom: 10,
+  cardLabel: {
+    fontSize: 14,
+    color: GRAY,
+    marginBottom: 4,
   },
-  metricValue: {
-    fontSize: 24,
+  cardTitle: {
+    fontSize: 22,
     fontWeight: '800',
-    color: '#000',
+    color: WHITE,
+    marginBottom: 16,
   },
-  metricValueActive: {
-    color: '#007AFF', // Or green if preferred
+
+  // Exercise Checklist
+  checklistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 11,
   },
-  metricValueInactive: {
-    color: '#D1D1D6',
+  checklistRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
   },
-  metricLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
-    marginTop: 2,
+  checkCircleComplete: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: CHARTREUSE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
-  errorText: {
-    color: 'red',
-    marginTop: 10,
+  checkCircleIncomplete: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.15)',
+    marginRight: 12,
   },
-  planContainer: {
-    flex: 1,
+  checkTextComplete: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: GRAY,
+    textDecorationLine: 'line-through',
   },
+  checkTextIncomplete: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: WHITE,
+  },
+
+  // Start Button
+  startButton: {
+    backgroundColor: CHARTREUSE,
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginTop: 18,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  startButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: BG,
+  },
+
+  // AI Insight
   insightCard: {
-    backgroundColor: '#FFF4E5',
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 10,
+    marginTop: 20,
+    backgroundColor: CARD_BG,
+    borderRadius: 20,
+    padding: 20,
     borderWidth: 1,
-    borderColor: '#FFE0B2',
-  },
-  insightCardCompleted: {
-    backgroundColor: '#E8F5E9',
-    borderColor: '#C8E6C9',
+    borderColor: BORDER,
   },
   insightHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    gap: 8,
+    marginBottom: 10,
   },
   insightTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#E65100',
+    fontSize: 17,
+    fontWeight: '700',
+    color: NEON,
   },
-  insightTitleCompleted: {
-    color: '#2E7D32',
-  },
-  insightCardPartial: {
-    backgroundColor: '#FFF8E1',
-    borderColor: '#FFE082',
-  },
-  insightTitlePartial: {
-    color: '#FF8F00',
-  },
-  insightText: {
+  insightQuote: {
     fontSize: 15,
-    color: '#333',
+    color: GRAY,
+    fontStyle: 'italic',
     lineHeight: 22,
   },
-  exerciseCard: {
+  insightLink: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: NEON,
+    letterSpacing: 0.5,
+    marginTop: 14,
+  },
+
+  // Activity Streak
+  streakSection: {
+    marginTop: 20,
+  },
+  streakHeader: {
     flexDirection: 'row',
-    backgroundColor: '#F9F9F9',
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 12,
+    justifyContent: 'space-between',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#EEE',
+    marginBottom: 14,
   },
-  exerciseCardCompletedStyle: {
-    backgroundColor: '#F0FFF0',
-    borderColor: '#E0F0E0',
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: WHITE,
   },
-  exerciseIndexBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#E5E5EA',
-    justifyContent: 'center',
+  streakBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 16,
+    gap: 4,
+    backgroundColor: ROW_BG,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
-  exerciseIndexText: {
+  streakCount: {
     fontSize: 14,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: '700',
+    color: STREAK_ORANGE,
   },
-  exerciseContent: {
+  chartCard: {
+    backgroundColor: CARD_BG,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  chartHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  chartMetricLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: WHITE,
+  },
+  chartMetricNote: {
+    fontSize: 12,
+    color: GRAY,
+  },
+  barsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    height: 120,
+  },
+  barColumn: {
+    alignItems: 'center',
     flex: 1,
   },
-  exerciseName: {
-    fontSize: 18,
+  barValue: {
+    fontSize: 11,
     fontWeight: '600',
-    color: '#000',
+    color: GRAY,
     marginBottom: 4,
   },
-  exerciseNameCompleted: {
-    color: '#666',
-    textDecorationLine: 'line-through',
+  bar: {
+    width: 22,
+    borderRadius: 6,
   },
-  exerciseDetails: {
-    fontSize: 15,
-    color: '#666',
+  barLabel: {
+    fontSize: 11,
+    color: GRAY,
+    marginTop: 8,
   },
-  exerciseTimeDetails: {
-    fontSize: 13,
-    color: '#8E8E93',
-    marginTop: 4,
+  barLabelToday: {
+    color: CHARTREUSE,
+    fontWeight: '700',
   },
-  stickyFooter: {
-    position: 'absolute',
-    bottom: 20,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
+
+  // Empty / Error
+  errorText: {
+    color: '#FF4444',
+    marginTop: 10,
   },
-  startButton: {
-    backgroundColor: '#000',
-    flexDirection: 'row',
+  emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: '100%',
-    paddingVertical: 18,
-    borderRadius: 30,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
+    paddingTop: 80,
+    gap: 12,
   },
-  startButtonText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-  }
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: WHITE,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: GRAY,
+    textAlign: 'center',
+  },
 });

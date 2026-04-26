@@ -4,8 +4,16 @@ export type RootStackParamList = {
   Main: undefined;
   WorkoutActive: { planId: string; dailyPlan: any };
   WorkoutSummary: { planId: string; logId: string; stats: any };
-  MidWorkoutChat: { exerciseName: string; currentSet: number; targetSets: number; coachTip?: string };
-  ChangeWorkoutChat: { planId: string };
+  SparkAIChat: {
+    context?: {
+      screen?: string;
+      exerciseName?: string;
+      currentSet?: number;
+      targetSets?: number;
+      coachTip?: string;
+      planId?: string;
+    };
+  };
 };
 
 export type AuthStackParamList = {

@@ -48,6 +48,7 @@ The JSON must adhere strictly to this format:
         {
             "name": "Exercise Name",
             "type": "strength | cardio | interval | calisthenics | isometric",
+            "movement_pattern": "One of: press_horizontal | press_vertical | fly_crossover | row | pulldown_pullup | curl | extension | squat_lunge | hinge_deadlift | raise | carry | plank_hold | run_sprint | jump_plyometric | rotation_twist — classify by the primary movement mechanics of this exercise",
             "sets": number (optional, for strength/calisthenics/isometric),
             "reps": number (optional, for strength/calisthenics),
             "estimated_time_secs": number (total active time for all sets, realistic for the movement and experience level),
